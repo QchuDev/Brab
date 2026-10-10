@@ -1,6 +1,9 @@
-include!("neural_network.rs");
-include!("activation_functions.rs");
-include!("cost_functions.rs");
+use nalgebra::DVector;
+
+mod brab;
+use crate::brab::network::NeuralNetwork;
+use crate::brab::cost::Mse;
+use crate::brab::activation::Sigmoid;
 
 /**
  * IMPORTANT CHECK FOR THE ERROR ON THE ADDTION AT FEEDFORWARD
