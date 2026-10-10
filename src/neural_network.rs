@@ -1,3 +1,4 @@
+
 use nalgebra::{self, DMatrix, DVector};
 use rand::{random};
 
@@ -51,10 +52,10 @@ impl<A:ActivationFunction, C: CostFunction> NeuralNetwork<A, C> {
     pub fn feed_forward(&mut self, input: DVector<f64>) -> () {
         // Check if the input and first entry layer are the same size
         if input.nrows() != self.layers[0].size() { return; }
-
+        
         self.layers[0].set_a(&input);
         for i in 1..(self.num_layers) {
-            let z_prime = &(&self.weights[i-1] * self.layers[i-1].get_a() + self.layers[i-1].get_b());
+            let z_prime = &(&self.weights[i-1] * self.layers[i-1].get_a() + self.layers[i].get_b());
             self.layers[i].set_z(z_prime);  // we save the weigthed input for later
             
             let a_prime = &self.sigma(z_prime);
@@ -64,33 +65,69 @@ impl<A:ActivationFunction, C: CostFunction> NeuralNetwork<A, C> {
     }
 
     // Called to get the  partial derivatives 
-    pub fn backprop(self) -> () {
+    pub fn backprop(&mut self, expected: DVector<f64>) -> Option<CostGradient> {
+        // Vector to save tje errors for each layer
+        let mut errors:Vec<DVector<f64>> = Vec::new();
+        for l in &self.layers {
+            errors.push(DVector::zeros(l.size()));
+        }
+        
         // Compute output_error
+        let opt_oe = self.output_error(&expected, self.layers[self.num_layers-1].get_z());
+        if let Some(output_error) = opt_oe {
+            errors[self.num_layers-1] = output_error;  
+        }  else {
+            return None; 
+        }
 
         // Backpropagate the error
+        for l in (0..self.num_layers-1).rev() {
+            let error_l: DVector<f64> = (self.weights[l-1].transpose() * &errors[l-1]).component_mul(&self.act_fn.derivative(self.layers[l].get_z()));
+            errors[l] = error_l;
+        }
 
-        // output
+        // output - Gradient of the cost function
+        let mut nabla_b = Vec::new();
+        let mut nabla_w = Vec::new();
+        
+        // iterate for each layer and use the errors to compute the partial derivative of each value 
+        
+        for l in 1..self.num_layers {
+            nabla_b[l] = errors[l].clone();                                     //  <<< hmmmm... check that
+            nabla_w[l] = &errors[l] * &self.layers[l-1].get_a().transpose();
+
+        }
+
+
+        return Some(CostGradient{nabla_w, nabla_b});
+    }
+
+    pub fn get_output(&self) -> &DVector<f64> {
+        self.layers[self.num_layers-1].get_a()
     }
     
-    fn output_error(self) -> DVector<f64> {
-        let mut delta= DVector::zeros(self.layers[0].size());
-
-        /// .... continue here
-        delta
-    }
-
     /// Compute the cost function with the expected vector.
     pub fn cost(&self, expected: &DVector<f64>) ->  f64 {
         self.cst_fn.function(expected, &self.get_output())
     }
 
+
+    // ==================== AUX functions ==================== 
+
+    /// Measuring the error of the output layer    
+    fn output_error(&self, expected: &DVector<f64>, z: &DVector<f64>) -> Option<DVector<f64>> {
+        // Gradient respect to a
+        let option_cgra = self.cst_fn.gradient_a(expected, self.get_output());
+        if let Some(gradient_a) = option_cgra {
+            Some(gradient_a.component_mul(&self.act_fn.derivative(z)))
+        } else {
+            None
+        }
+    }
+
     /// Calls the assigned activation functionx
     fn sigma(&self, x_ref: &DVector<f64>) -> DVector<f64> {
         self.act_fn.function(x_ref)
-    }
-
-    pub fn get_output(&self) -> DVector<f64> {
-        self.layers[self.num_layers-1].get_a().clone()
     }
 
 }
@@ -125,6 +162,11 @@ impl Layer {
     pub fn set_z(&mut self, new_z: &DVector<f64>) -> () { self.z = new_z.clone(); } 
     pub fn get_z(&self) -> &DVector<f64>{ &(self.z) } 
     
-    pub fn set_b(&mut self, new_b: &DVector<f64>) -> () { self.b = new_b.clone(); } // correct cloning??
+    // pub fn set_b(&mut self, new_b: &DVector<f64>) -> () { self.b = new_b.clone(); } // correct cloning??
     pub fn get_b(&self) -> &DVector<f64>{ &(self.b) } 
+}
+
+pub struct CostGradient {
+    nabla_w: Vec<DMatrix<f64>>,
+    nabla_b: Vec<DVector<f64>>
 }

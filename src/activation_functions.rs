@@ -1,6 +1,9 @@
 /*  
 ================        ACTIVATION FUNCTIONS        ================
 */
+/// This traits expects an implementation for:
+/// Activation function (function)
+/// and its derivative (derivative)
 pub trait ActivationFunction {
     fn function(&self, x: &DVector<f64>) -> DVector<f64>;
     fn derivative(&self, x: &DVector<f64>) -> DVector<f64>;
