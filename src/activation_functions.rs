@@ -8,6 +8,7 @@ pub trait ActivationFunction {
     fn function(&self, x: &DVector<f64>) -> DVector<f64>;
     fn derivative(&self, x: &DVector<f64>) -> DVector<f64>;
 }
+
 struct Relu{}
 impl Relu { pub fn new() -> Self {  Self{} }}
 impl ActivationFunction for Relu {
@@ -31,6 +32,7 @@ impl ActivationFunction for Relu {
 }
 fn relu_f(x: f64) -> f64 { if x < 0.0 { 0.0 } else { x } }
 
+
 struct Sigmoid{}
 impl Sigmoid { pub fn new() -> Self {  Self{} }}
 impl ActivationFunction for Sigmoid  {
@@ -51,6 +53,4 @@ impl ActivationFunction for Sigmoid  {
     }
 }
 fn sigmoid_f(x: f64) -> f64 { 1f64 / (1f64 + (-x).exp())  }
-fn sigmoid_prime_f(x: f64) -> f64 { x.exp() * (1f64 - x.exp())  }
-
-
+fn sigmoid_prime_f(x: f64) -> f64 { sigmoid_f(x) * (1f64 - sigmoid_f(x))  }

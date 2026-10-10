@@ -1,4 +1,3 @@
-
 use nalgebra::{self, DMatrix, DVector};
 use rand::{random};
 
@@ -65,12 +64,14 @@ impl<A:ActivationFunction, C: CostFunction> NeuralNetwork<A, C> {
     }
 
     // Called to get the  partial derivatives 
-    pub fn backprop(&mut self, expected: DVector<f64>) -> Option<CostGradient> {
+    fn backprop(&mut self, expected: DVector<f64>) -> Option<CostGradient> {
         // Vector to save tje errors for each layer
         let mut errors:Vec<DVector<f64>> = Vec::new();
-        for l in &self.layers {
-            errors.push(DVector::zeros(l.size()));
+        for layer in &self.layers {
+            // if (l == 0 || l == self.num_layers-1) { continue }  // needed???
+            errors.push(DVector::zeros(layer.size()));
         }
+
         
         // Compute output_error
         let opt_oe = self.output_error(&expected, self.layers[self.num_layers-1].get_z());
@@ -80,26 +81,47 @@ impl<A:ActivationFunction, C: CostFunction> NeuralNetwork<A, C> {
             return None; 
         }
 
+
         // Backpropagate the error
-        for l in (0..self.num_layers-1).rev() {
-            let error_l: DVector<f64> = (self.weights[l-1].transpose() * &errors[l-1]).component_mul(&self.act_fn.derivative(self.layers[l].get_z()));
-            errors[l] = error_l;
+        for l in (1..self.num_layers).rev() {
+            let p_error = &self.weights[l-1].transpose() * &errors[l];
+            let sigmap_z = &self.act_fn.derivative(self.layers[l-1].get_z());
+
+            let error_l = p_error.component_mul(sigmap_z); // <-- check this 
+            
+            errors[l-1] = error_l;
         }
 
         // output - Gradient of the cost function
         let mut nabla_b = Vec::new();
         let mut nabla_w = Vec::new();
-        
-        // iterate for each layer and use the errors to compute the partial derivative of each value 
-        
-        for l in 1..self.num_layers {
-            nabla_b[l] = errors[l].clone();                                     //  <<< hmmmm... check that
-            nabla_w[l] = &errors[l] * &self.layers[l-1].get_a().transpose();
 
+        // iterate for each layer and use the errors to compute the partial derivative of each value 
+        for l in 1..self.num_layers {
+            nabla_b.push(errors[l].clone());                                     //  <<< hmmmm... check that
+            nabla_w.push(&errors[l] * &self.layers[l-1].get_a().transpose());
         }
 
 
         return Some(CostGradient{nabla_w, nabla_b});
+    }
+
+    /// Apply stocastic gradient descent
+    pub fn sgd(&mut self, eta: f64, expected: DVector<f64>) -> () {
+        let opt_gr = self.backprop(expected);
+
+        if let Some(cost_gradient) = opt_gr {
+
+            for l in 0..self.num_layers-1 {
+                let new_w = &self.weights[l] + eta * &cost_gradient.nabla_w[l];
+                self.weights[l] = new_w;
+
+                let new_b:DVector<f64> = self.layers[l+1].get_b() + eta * &cost_gradient.nabla_b[l];
+                self.layers[l+1].set_b(&(new_b));
+            }
+        } else {
+            println!("NO COST FUNCTION GRADIENT");
+        }
     }
 
     pub fn get_output(&self) -> &DVector<f64> {
@@ -110,6 +132,7 @@ impl<A:ActivationFunction, C: CostFunction> NeuralNetwork<A, C> {
     pub fn cost(&self, expected: &DVector<f64>) ->  f64 {
         self.cst_fn.function(expected, &self.get_output())
     }
+
 
 
     // ==================== AUX functions ==================== 
@@ -162,7 +185,7 @@ impl Layer {
     pub fn set_z(&mut self, new_z: &DVector<f64>) -> () { self.z = new_z.clone(); } 
     pub fn get_z(&self) -> &DVector<f64>{ &(self.z) } 
     
-    // pub fn set_b(&mut self, new_b: &DVector<f64>) -> () { self.b = new_b.clone(); } // correct cloning??
+    pub fn set_b(&mut self, new_b: &DVector<f64>) -> () { self.b = new_b.clone(); } // correct cloning??
     pub fn get_b(&self) -> &DVector<f64>{ &(self.b) } 
 }
 
