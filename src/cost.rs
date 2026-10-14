@@ -32,5 +32,5 @@ pub fn mse(expected: &DVector<f64>, response: &DVector<f64>) -> f64 {
 pub fn mse_gradient_a(expected: &DVector<f64>, response: &DVector<f64>) -> Option<DVector<f64>> {
     if expected.nrows() != response.nrows() { return None; }
     
-    return Some(expected - response);
+    return Some(response - expected);
 }

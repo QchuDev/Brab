@@ -1,17 +1,17 @@
 use nalgebra::{self, DMatrix, DVector};
 use rand::{random};
 
-use crate::{activation, cost};
+use crate::{activation, cost, data::TrainData};
 
 /*
     On this NeuralNetwork we distinguish the hidden layers from the input and output ones
 */
 pub struct NeuralNetwork<A, C> {
-    pub layers: Vec<Layer>,                                 // layers of neurons: current activation values 
-    pub weights: Vec<DMatrix<f64>>,                         // in-between weights matrices  
-    pub num_layers: usize,                                  // number of layers 
-    pub act_fn: A,          // activation function
-    pub cst_fn: C,    // cost function
+    layers: Vec<Layer>,                                 // layers of neurons: current activation values 
+    weights: Vec<DMatrix<f64>>,                         // in-between weights matrices  
+    num_layers: usize,                                  // number of layers 
+    act_fn: A,          // activation function
+    cst_fn: C,    // cost function
 }
 impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C> {
     
@@ -36,7 +36,7 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
             new_weights.push(DMatrix::from_fn(
                 layers_sizes[i+1],
                 layers_sizes[i],
-                |_i, _j| -> f64 { random() }
+                |_i, _j| -> f64 { random::<f64>() * 2.0 - 1.0 }
             ));
         }
 
@@ -48,11 +48,73 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
             cst_fn: new_cst_fn
         };
     }
+    
+    /// Treat this neural network as a function:
+    /// - f(x) -> y
+    /// 
+    /// It returns the output for a given input 
+    pub fn evaluate(&mut self, input: DVector<f64>) -> Option<&DVector<f64>> {
+        if let Ok(_msg) = self.feed_forward(input) {
+            return Some(self.get_output());
+        } else {
+            return None
+        }
+    }
+
+    pub fn train_multiple(&mut self, eta: f64, train_data: Vec<TrainData>) -> Result<&str,String> {
+        let mut certainty = 0.0;
+        let mut error = 0.0;
+        let mut s_certainty = 0.0;
+        let mut s_error = 0.0;
+        let mut n = 0;
+        let mut ok = 0;
+        
+        for td in train_data {
+            let _ = self.feed_forward(td.input);
+            
+            if let Err(msg) = self.train_single(eta, td.expected.clone()) {
+                return Err(msg.to_string());
+            }
+
+            n += 1;
+            
+            certainty = self.get_output().max();
+            s_certainty += certainty;
+
+            error = (self.get_output() - &td.expected).sum();
+            s_error += error;
+
+            if error < 0.02 && certainty > 0.8 { ok += 1 }
+            println!("{0} vs {1}", td.expected, self.get_output());
+            println!("Certainty  = {}", certainty);
+            println!("Error  = {}", error);
+
+        }
+        println!("Mean Certainty  = {} \n Mean Error = {} \n Accuracy = {}", 
+            s_certainty/n as f64, 
+            s_error/n as f64,
+            ok as f64/n as f64 
+        );
+
+        return Ok("All training data processed");
+    }
+    
+    /// Call this method to calculate how well the network did with the aproximation 
+    /// and update its parameters (weigths and biases)
+    pub fn train_single(&mut self, eta: f64, expected: DVector<f64>) -> Result<&str, &str> {
+        return self.sgd(eta, expected);
+    }    
+
+    pub fn get_output(&self) -> &DVector<f64> {
+        self.layers[self.num_layers-1].get_a()
+    }
+
+    // ==================== PRIV functions ==================== 
 
     /// Feed with an input to update the layers of the Neural Network
-    pub fn feed_forward(&mut self, input: DVector<f64>) -> () {
+    fn feed_forward(&mut self, input: DVector<f64>) -> Result<&str, &str> {
         // Check if the input and first entry layer are the same size
-        if input.nrows() != self.layers[0].size() { return; }
+        if input.nrows() != self.layers[0].size() { return Err("Not the same size"); }
         
         self.layers[0].set_a(&input);
         for i in 1..(self.num_layers) {
@@ -62,9 +124,33 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
             let a_prime = &self.sigma(z_prime);
             self.layers[i].set_a(a_prime); 
         }
-        
+
+        return Ok("Feeded");
+
     }
 
+    /// Apply "stocastic gradient descent"
+    fn sgd(&mut self, eta: f64, expected: DVector<f64>) -> Result<&str, &str> {
+        // First we run the back propagation algorithm to calculate the cost gradient
+        let opt_gr = self.backprop(expected);
+        if let None = opt_gr { return Err("ERROR: Cost Gradient couldn't be solved"); }
+        
+        let cost_gradient: CostGradient = opt_gr.unwrap();
+        // We update the parameters of the network with the cost_gradient and eta (training rate)
+        self.update_parameters(cost_gradient, eta);
+
+        return Ok("Ok: Cost Gradient solved and parameters updated");
+    }
+
+    fn update_parameters(&mut self, cost_gradient: CostGradient, eta: f64) {
+        for l in 0..self.num_layers-1 {
+            let new_w = &self.weights[l] - eta * &cost_gradient.nabla_w[l];
+            self.weights[l] = new_w;
+    
+            let new_b:DVector<f64> = self.layers[l+1].get_b() - eta * &cost_gradient.nabla_b[l];
+            self.layers[l+1].set_b(&(new_b));
+        }
+    }
     // Called to get the  partial derivatives 
     fn backprop(&mut self, expected: DVector<f64>) -> Option<CostGradient> {
         // Vector to save tje errors for each layer
@@ -108,37 +194,6 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
         return Some(CostGradient{nabla_w, nabla_b});
     }
 
-    /// Apply stocastic gradient descent
-    pub fn sgd(&mut self, eta: f64, expected: DVector<f64>) -> () {
-        let opt_gr = self.backprop(expected);
-
-        if let Some(cost_gradient) = opt_gr {
-
-            for l in 0..self.num_layers-1 {
-                let new_w = &self.weights[l] + eta * &cost_gradient.nabla_w[l];
-                self.weights[l] = new_w;
-
-                let new_b:DVector<f64> = self.layers[l+1].get_b() + eta * &cost_gradient.nabla_b[l];
-                self.layers[l+1].set_b(&(new_b));
-            }
-        } else {
-            println!("NO COST FUNCTION GRADIENT");
-        }
-    }
-
-    pub fn get_output(&self) -> &DVector<f64> {
-        self.layers[self.num_layers-1].get_a()
-    }
-    
-    /// Compute the cost function with the expected vector.
-    pub fn cost(&self, expected: &DVector<f64>) ->  f64 {
-        self.cst_fn.function(expected, &self.get_output())
-    }
-
-
-
-    // ==================== AUX functions ==================== 
-
     /// Measuring the error of the output layer    
     fn output_error(&self, expected: &DVector<f64>, z: &DVector<f64>) -> Option<DVector<f64>> {
         // Gradient respect to a
@@ -157,7 +212,7 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
 
 }
 
-pub struct Layer {
+struct Layer {
     z: DVector<f64>,      // weigthed inputs    z = w * a + b
     a: DVector<f64>,      // activations : a = s(z)
 
@@ -173,7 +228,7 @@ impl Layer {
             
             b: DVector::from_fn(
                 size,
-                |_i, _j| -> f64 { random() }
+                |_i, _j| -> f64 { random::<f64>() * 2.0 - 0.5 }
             ),
         }
     }
@@ -191,7 +246,7 @@ impl Layer {
     pub fn get_b(&self) -> &DVector<f64>{ &(self.b) } 
 }
 
-pub struct CostGradient {
+struct CostGradient {
     nabla_w: Vec<DMatrix<f64>>,
     nabla_b: Vec<DVector<f64>>
 }
