@@ -1,11 +1,10 @@
 use core::f64;
-use std::{error::Error, fs};
-
-use crate::{activation, cost, data::{self, TrainData}};
+use std::error::Error;
+use crate::{activation, cost, data::{TrainData}};
 use nalgebra::{self, DMatrix, DVector};
 use rand::{random};
-use safetensors::{Dtype, SafeTensorError, serialize, serialize_to_file, tensor::TensorView};
-use tuple_conv::{RepeatedTuple, TupleOrVec};
+use safetensors::{Dtype, SafeTensors, SafeTensorError, serialize_to_file, tensor::TensorView};
+use tuple_conv::{TupleOrVec};
 
 /*
     On this NeuralNetwork we distinguish the hidden layers from the input and output ones
@@ -29,13 +28,13 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
         let new_num_layers = Vec::len(&layers_sizes);
         
         // Create each layer of zeros with the specified sizes
-        let mut new_layers = Vec::new();
+        let mut new_layers = vec![];
         for s in layers_sizes {
             new_layers.push(Layer::new(*s));
         }
 
         // Create each in-between matrix of random weights
-        let mut new_weights:Vec<DMatrix<f64>> = Vec::new();
+        let mut new_weights:Vec<DMatrix<f64>> = vec![];
         for i  in 0..(new_num_layers-1) {
             new_weights.push(DMatrix::from_fn(
                 layers_sizes[i+1],
@@ -53,10 +52,61 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
         };
     }
     
-    /// Load an existing configuration from a (...).safetensor file
-    pub fn new_load(file_path : &str) -> Self {
-        //
-        
+    /// Load an existing configuration from a '(...).safetensor' file
+    pub fn new_load(
+        file_path: &str,
+        act_fn: A,
+        cst_fn: C,
+    ) -> Result<Self, SafeTensorError> {
+        let file = std::fs::read(file_path)?;
+        let tensors = SafeTensors::deserialize(&file)?;
+
+        let num_layers = tensors
+            .names()
+            .iter()
+            .filter(|n| n.starts_with("biases_"))
+            .count();
+
+        let mut new_layers: Vec<Layer> = Vec::with_capacity(num_layers);
+        let mut new_weights: Vec<DMatrix<f64>> = Vec::with_capacity(num_layers - 1);
+
+        // We know its indexed like 'name_{i}' so we use it to bring the values
+
+        // Extracting biases
+        for l in 0..num_layers {
+            let bias_view = tensors.tensor(&format!("biases_{}", l))?;
+            let (bias_data, _shape) = tensor_to_f64(&bias_view);
+
+            let b = DVector::from_vec(bias_data);
+            let size = b.nrows();
+
+            new_layers.push(Layer {
+                a: DVector::zeros(size),
+                z: DVector::zeros(size),
+                b,
+            });
+        }
+
+        // Extracting weights
+        for l in 0..(num_layers - 1) {
+            // We know its indexed like 'name_{i}' so we use it to bring the values
+            let w_view = tensors.tensor(&format!("weights_{}", l))?;    
+            let (w_data, w_shape) = tensor_to_f64(&w_view);
+
+            let rows = w_shape[0];
+            let cols = w_shape[1];
+
+            let w = DMatrix::from_column_slice(rows, cols, &w_data);
+            new_weights.push(w);
+        }
+
+        Ok(Self {
+            layers: new_layers,
+            weights: new_weights,
+            num_layers,
+            act_fn,
+            cst_fn,
+        })
     }
 
 
@@ -73,47 +123,22 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
     }
 
     pub fn train_multiple(&mut self, eta: f64, train_data: Vec<TrainData>) -> Result<&str,String> {
-        let mut certainty = 0.0;
-        let mut error = 0.0;
-        let mut s_certainty = 0.0;
-        let mut s_error = 0.0;
-        let mut n = 0;
-        let mut ok = 0;
-        
         for td in train_data {
             let _ = self.feed_forward(td.input);
             
-            if let Err(msg) = self.train_single(eta, td.expected.clone()) {
+            if let Err(msg) = self.sgd(eta, td.expected.clone()) {
                 return Err(msg.to_string());
             }
-
-            n += 1;
-            
-            certainty = self.get_output().max();
-            s_certainty += certainty;
-
-            error = (self.get_output() - &td.expected).sum();
-            s_error += error;
-
-            if error < 0.02 && certainty > 0.8 { ok += 1 }
-            println!("{0} vs {1}", td.expected, self.get_output());
-            println!("Certainty  = {}", certainty);
-            println!("Error  = {}", error);
-
         }
-        println!("Mean Certainty  = {} \n Mean Error = {} \n Accuracy = {}", 
-            s_certainty/n as f64, 
-            s_error/n as f64,
-            ok as f64/n as f64 
-        );
 
         return Ok("All training data processed");
     }
     
     /// Call this method to calculate how well the network did with the aproximation 
     /// and update its parameters (weigths and biases)
-    pub fn train_single(&mut self, eta: f64, expected: DVector<f64>) -> Result<&str, &str> {
-        return self.sgd(eta, expected);
+    pub fn train_single(&mut self, eta: f64, td: TrainData) -> Result<&str, &str> {
+        let _ = self.feed_forward(td.input);
+        return self.sgd(eta, td.expected);
     }    
 
     pub fn get_output(&self) -> &DVector<f64> {
@@ -121,79 +146,50 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
     }
 
     pub fn save(&self, file_path: &str) -> Result<(), Box<dyn Error>> {
-        // Save all weights and biases into a CSV file in 'file_path'
+        // Save all weights and biases into a safetensors file in 'file_path'.
+        //
+        // IMPORTANT: `serialize_to_file` overwrites the whole file on every call,
+        // so every tensor must be serialized in a SINGLE call. We first build all
+        // the byte buffers (which must outlive the TensorViews that borrow them),
+        // then create the views, then serialize once.
 
-        // First lets iterate for each weight and bias 
-        for i in 0..self.num_layers-1 {
-            // Transform both bias and weight into a chain of numbers (flatten)
-            let vec_b: Vec<f64> = self.layers[i].get_b().as_slice().to_vec();
-            let vec_w: Vec<f64> = self.weights[i].as_slice().to_vec();
-            let w_shape = self.weights[i].shape().as_vec();
-            
-            // Translate into u8 values  
-            let b_bytes: Vec<u8> = vec_b
-                            .iter()
-                            .flat_map(|v| v.to_le_bytes())
-                            .collect();
-            let w_bytes: Vec<u8> = vec_w
-                            .iter()
-                            .flat_map(|v| v.to_le_bytes())
-                            .collect();
+        // 1) Flatten every bias and weight into little-endian byte buffers.
+        //    We keep these buffers alive in `buffers` for the duration of the fn.
+        let mut b_buffers: Vec<Vec<u8>> = Vec::with_capacity(self.num_layers);
+        let mut w_buffers: Vec<Vec<u8>> = Vec::with_capacity(self.num_layers - 1);
+        let mut b_sizes: Vec<usize> = Vec::with_capacity(self.num_layers);
+        let mut w_shapes: Vec<Vec<usize>> = Vec::with_capacity(self.num_layers - 1);
 
-            // Create the tensor view for each one
-            let b_tensor_view = TensorView::new(
-                Dtype::F64,
-                vec![vec_b.len()],
-                &b_bytes,
-            )?;
-
-            let w_tensor_view = TensorView::new(
-                Dtype::F64,
-                w_shape,
-                &w_bytes,
-            )?;
-
-            let file_data = vec![
-                (format!["weights_{}", i], w_tensor_view),
-                (format!["biases_{}", i], b_tensor_view)
-            ];
-
-            // Save into disk
-            serialize_to_file(
-                file_data,
-                None,
-                std::path::Path::new(file_path),
-            )?;
-
-
+        // All biases (one per layer, including input and output layers)
+        for l in 0..self.num_layers {
+            let vec_b: Vec<f64> = self.layers[l].get_b().as_slice().to_vec();
+            b_sizes.push(vec_b.len());
+            b_buffers.push(vec_b.iter().flat_map(|v| v.to_le_bytes()).collect());
         }
 
-        // And lets not forget about that last handling bias vector
-        let vec_b: Vec<f64> = self.layers[self.num_layers-1].get_b().as_slice().to_vec();
-        // Translate into u8 values  
-        let b_bytes: Vec<u8> = vec_b
-                        .iter()
-                        .flat_map(|v| v.to_le_bytes())
-                        .collect();
+        // All weight matrices (num_layers - 1 of them)
+        for l in 0..self.num_layers - 1 {
+            let vec_w: Vec<f64> = self.weights[l].as_slice().to_vec();
+            w_shapes.push(self.weights[l].shape().as_vec());
+            w_buffers.push(vec_w.iter().flat_map(|v| v.to_le_bytes()).collect());
+        }
 
-        // Create the tensor view for each one
-        let b_tensor_view = TensorView::new(
-            Dtype::F64,
-            vec![vec_b.len()],
-            &b_bytes,
-        )?;
+        // 2) Build all tensor views, borrowing from the buffers above.
+        let mut file_data: Vec<(String, TensorView)> = Vec::new();
 
-        let file_data = vec![
-            (format!["biases_{}", self.num_layers-1], b_tensor_view)
-        ];
+        for l in 0..self.num_layers {
+            let view = TensorView::new(Dtype::F64, vec![b_sizes[l]], &b_buffers[l])?;
+            file_data.push((format!("biases_{}", l), view));
+        }
 
-        // Save into disk
-        serialize_to_file(
-            file_data,
-            None,
-            std::path::Path::new(file_path),
-        )?;
-        
+        for l in 0..self.num_layers - 1 {
+            let view = TensorView::new(Dtype::F64, w_shapes[l].clone(), &w_buffers[l])?;
+            file_data.push((format!("weights_{}", l), view));
+        }
+
+        // 3) Serialize everything in one go.
+        serialize_to_file(file_data, None, std::path::Path::new(file_path))?;
+
         return Ok(());
     }
 
@@ -300,6 +296,7 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
 
 }
 
+#[derive(Clone, Debug)]
 struct Layer {
     z: DVector<f64>,      // weigthed inputs    z = b * a + b
     a: DVector<f64>,      // activations : a = s(z)
@@ -337,4 +334,14 @@ impl Layer {
 struct CostGradient {
     nabla_w: Vec<DMatrix<f64>>,
     nabla_b: Vec<DVector<f64>>
+}
+
+fn tensor_to_f64(view: &TensorView) -> (Vec<f64>, Vec<usize>) {
+    let data: Vec<f64> = view
+        .data()
+        .chunks_exact(8)
+        .map(|c| 
+            f64::from_le_bytes(c.try_into().unwrap()))
+            .collect();
+    (data, view.shape().to_vec())
 }

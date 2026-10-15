@@ -23,16 +23,18 @@ Result pattern and testing. With these two feedback and code state upgrades.
 - [ ] Softmax function
 
 
-## THE IDEA - PHILOSOPHY
+## What can you do?
 
 ### Create  [x]
 Give dimensions of the network, cost and activation functions.
+
 ### Use     [x]
 Evaluate the network with .evaluate(input) 
-### Train   [ ]
+
+### Train   [x]
 Train it by givin the expected value and learning rate, it will correct itself.
 
 Hand in a dataset to make the automatic training
 
-### Save    [ ]
-Save into a CSV all parameters of your neural network
+### Save & Load    [x]
+Save into safetensor type file
