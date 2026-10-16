@@ -17,10 +17,12 @@ Small library for creating, using and saving neural network models. Make a small
 Result pattern and testing. With these two feedback and code state upgrades.
 
 - [ ] Result pattern use
-- [ ] Testing              
-- [ ] Data extractor:
+- [ ] Testing        (dev use)        
+- [x] Data provider:
 - [ ] Documentation
 - [ ] Softmax function
+- [ ] Study DRL (Deep Reinforcement Learning)
+- [ ] Formatter     (dev use)
 
 
 ## What can you do?
@@ -34,7 +36,7 @@ Evaluate the network with .evaluate(input)
 ### Train   [x]
 Train it by givin the expected value and learning rate, it will correct itself.
 
-Hand in a dataset to make the automatic training
+Hand in a dataset to make the automatic training.
 
 ### Save & Load    [x]
-Save into safetensor type file
+Save into safetensor type file and create a new network from that saved data.

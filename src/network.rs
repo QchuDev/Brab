@@ -1,32 +1,31 @@
+use crate::neural_functions::{ActivationFunction, CostFunction};
+use crate::{data::TrainData, neural_functions::NeuralFunctionContext};
 use core::f64;
-use std::error::Error;
-use crate::{activation, cost, data::{TrainData}};
 use nalgebra::{self, DMatrix, DVector};
-use rand::{random};
-use safetensors::{Dtype, SafeTensors, SafeTensorError, serialize_to_file, tensor::TensorView};
-use tuple_conv::{TupleOrVec};
+use rand::random;
+use safetensors::{Dtype, SafeTensorError, SafeTensors, serialize_to_file, tensor::TensorView};
+use std::error::Error;
+use tuple_conv::TupleOrVec;
 
 /*
     On this NeuralNetwork we distinguish the hidden layers from the input and output ones
 */
-pub struct NeuralNetwork<A, C> {
-    layers: Vec<Layer>,                                 // layers of neurons: current activation values 
-    weights: Vec<DMatrix<f64>>,                         // in-between weights matrices  
-    num_layers: usize,                                  // number of layers 
-    act_fn: A,          // activation function
-    cst_fn: C,    // cost function
+pub struct NeuralNetwork<'a> {
+    layers: Vec<Layer>,                 // layers of neurons: current activation values
+    weights: Vec<DMatrix<f64>>,         // in-between weights matrices
+    num_layers: usize,                  // number of layers
+    act_fn: &'a dyn ActivationFunction, // activation function
+    cst_fn: &'a dyn CostFunction,       // cost function
 }
-impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C> {
-    
+impl<'a> NeuralNetwork<'a> {
     /// Create a NEW Neural Network by passing size of each layer
     pub fn new(
-        layers_sizes: &Vec<usize>, 
-        new_act_fn: A,
-        new_cst_fn: C
-    ) -> Self {
-
+        layers_sizes: &Vec<usize>,
+        new_act_fn: &'a dyn ActivationFunction,
+        new_cst_fn: &'a dyn CostFunction,
+    ) -> NeuralNetwork<'a> {
         let new_num_layers = Vec::len(&layers_sizes);
-        
+
         // Create each layer of zeros with the specified sizes
         let mut new_layers = vec![];
         for s in layers_sizes {
@@ -34,30 +33,30 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
         }
 
         // Create each in-between matrix of random weights
-        let mut new_weights:Vec<DMatrix<f64>> = vec![];
-        for i  in 0..(new_num_layers-1) {
+        let mut new_weights: Vec<DMatrix<f64>> = vec![];
+        for i in 0..(new_num_layers - 1) {
             new_weights.push(DMatrix::from_fn(
-                layers_sizes[i+1],
+                layers_sizes[i + 1],
                 layers_sizes[i],
-                |_i, _j| -> f64 { random::<f64>() * 2.0 - 1.0 }
+                |_i, _j| -> f64 { random::<f64>() * 2.0 - 1.0 },
             ));
         }
 
-        return Self {
-            layers:     new_layers,
-            weights:    new_weights,
+        return NeuralNetwork {
+            layers: new_layers,
+            weights: new_weights,
             num_layers: new_num_layers,
             act_fn: new_act_fn,
-            cst_fn: new_cst_fn
+            cst_fn: new_cst_fn,
         };
     }
-    
+
     /// Load an existing configuration from a '(...).safetensor' file
     pub fn new_load(
         file_path: &str,
-        act_fn: A,
-        cst_fn: C,
-    ) -> Result<Self, SafeTensorError> {
+        act_fn: &'a dyn ActivationFunction,
+        cst_fn: &'a dyn CostFunction,
+    ) -> Result<NeuralNetwork<'a>, SafeTensorError> {
         let file = std::fs::read(file_path)?;
         let tensors = SafeTensors::deserialize(&file)?;
 
@@ -90,7 +89,7 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
         // Extracting weights
         for l in 0..(num_layers - 1) {
             // We know its indexed like 'name_{i}' so we use it to bring the values
-            let w_view = tensors.tensor(&format!("weights_{}", l))?;    
+            let w_view = tensors.tensor(&format!("weights_{}", l))?;
             let (w_data, w_shape) = tensor_to_f64(&w_view);
 
             let rows = w_shape[0];
@@ -109,23 +108,22 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
         })
     }
 
-
     /// Treat this neural network as a function:
     /// - f(x) -> y
-    /// 
-    /// It returns the output for a given input 
+    ///
+    /// It returns the output for a given input
     pub fn evaluate(&mut self, input: DVector<f64>) -> Option<&DVector<f64>> {
         if let Ok(_msg) = self.feed_forward(input) {
             return Some(self.get_output());
         } else {
-            return None
+            return None;
         }
     }
 
-    pub fn train_multiple(&mut self, eta: f64, train_data: Vec<TrainData>) -> Result<&str,String> {
+    pub fn train_multiple(&mut self, eta: f64, train_data: Vec<TrainData>) -> Result<&str, String> {
         for td in train_data {
             let _ = self.feed_forward(td.input);
-            
+
             if let Err(msg) = self.sgd(eta, td.expected.clone()) {
                 return Err(msg.to_string());
             }
@@ -133,16 +131,16 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
 
         return Ok("All training data processed");
     }
-    
-    /// Call this method to calculate how well the network did with the aproximation 
+
+    /// Call this method to calculate how well the network did with the aproximation
     /// and update its parameters (weigths and biases)
     pub fn train_single(&mut self, eta: f64, td: TrainData) -> Result<&str, &str> {
         let _ = self.feed_forward(td.input);
         return self.sgd(eta, td.expected);
-    }    
+    }
 
     pub fn get_output(&self) -> &DVector<f64> {
-        self.layers[self.num_layers-1].get_a()
+        self.layers[self.num_layers - 1].get_a()
     }
 
     pub fn save(&self, file_path: &str) -> Result<(), Box<dyn Error>> {
@@ -193,32 +191,36 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
         return Ok(());
     }
 
-    // ==================== PRIV functions ==================== 
+    // ==================== PRIV functions ====================
 
     /// Feed with an input to update the layers of the Neural Network
     fn feed_forward(&mut self, input: DVector<f64>) -> Result<&str, &str> {
         // Check if the input and first entry layer are the same size
-        if input.nrows() != self.layers[0].size() { return Err("Not the same size"); }
-        
+        if input.nrows() != self.layers[0].size() {
+            return Err("Not the same size");
+        }
+
         self.layers[0].set_a(&input);
         for i in 1..(self.num_layers) {
-            let z_prime = &(&self.weights[i-1] * self.layers[i-1].get_a() + self.layers[i].get_b());
-            self.layers[i].set_z(z_prime);  // we save the weigthed input for later
-            
-            let a_prime = &self.sigma(z_prime);
-            self.layers[i].set_a(a_prime); 
+            let z_prime =
+                &(&self.weights[i - 1] * self.layers[i - 1].get_a() + self.layers[i].get_b());
+            self.layers[i].set_z(z_prime); // we save the weigthed input for later
+
+            let a_prime = &self.v_sigma(z_prime);
+            self.layers[i].set_a(a_prime);
         }
 
         return Ok("Feeded");
-
     }
 
     /// Apply "stocastic gradient descent"
     fn sgd(&mut self, eta: f64, expected: DVector<f64>) -> Result<&str, &str> {
         // First we run the back propagation algorithm to calculate the cost gradient
         let opt_gr = self.backprop(expected);
-        if let None = opt_gr { return Err("ERROR: Cost Gradient couldn't be solved"); }
-        
+        if let None = opt_gr {
+            return Err("ERROR: Cost Gradient couldn't be solved");
+        }
+
         let cost_gradient: CostGradient = opt_gr.unwrap();
         // We update the parameters of the network with the cost_gradient and eta (training rate)
         self.update_parameters(cost_gradient, eta);
@@ -227,121 +229,135 @@ impl<A:activation::ActivationFunction, C: cost::CostFunction> NeuralNetwork<A, C
     }
 
     fn update_parameters(&mut self, cost_gradient: CostGradient, eta: f64) {
-        for l in 0..self.num_layers-1 {
+        for l in 0..self.num_layers - 1 {
             let new_w = &self.weights[l] - eta * &cost_gradient.nabla_w[l];
             self.weights[l] = new_w;
-    
-            let new_b:DVector<f64> = self.layers[l+1].get_b() - eta * &cost_gradient.nabla_b[l];
-            self.layers[l+1].set_b(&(new_b));
+
+            let new_b: DVector<f64> = self.layers[l + 1].get_b() - eta * &cost_gradient.nabla_b[l];
+            self.layers[l + 1].set_b(&(new_b));
         }
     }
-    // Called to get the  partial derivatives 
+
+    // Called to get the  partial derivatives
     fn backprop(&mut self, expected: DVector<f64>) -> Option<CostGradient> {
         // Vector to save tje errors for each layer
-        let mut errors:Vec<DVector<f64>> = Vec::new();
+        let mut errors: Vec<DVector<f64>> = Vec::new();
         for layer in &self.layers {
             // if (l == 0 || l == self.num_layers-1) { continue }  // needed???
             errors.push(DVector::zeros(layer.size()));
         }
 
-        
         // Compute output_error
-        let opt_oe = self.output_error(&expected, self.layers[self.num_layers-1].get_z());
-        if let Some(output_error) = opt_oe {
-            errors[self.num_layers-1] = output_error;  
-        }  else {
-            return None; 
-        }
-
+        let output_error = self.output_error(&expected, self.layers[self.num_layers - 1].get_z());
+        errors[self.num_layers - 1] = output_error;
 
         // Backpropagate the error
         for l in (1..self.num_layers).rev() {
-            let p_error = &self.weights[l-1].transpose() * &errors[l];
-            let sigmap_z = &self.act_fn.derivative(self.layers[l-1].get_z());
+            let p_error = &self.weights[l - 1].transpose() * &errors[l];
+            let sigmap_z = self.v_sigma_prime(self.layers[l - 1].get_z());
+            let error_l = p_error.component_mul(&sigmap_z); // <-- check this 
 
-            let error_l = p_error.component_mul(sigmap_z); // <-- check this 
-            
-            errors[l-1] = error_l;
+            errors[l - 1] = error_l;
         }
 
         // output - Gradient of the cost function
         let mut nabla_b = Vec::new();
         let mut nabla_w = Vec::new();
 
-        // iterate for each layer and use the errors to compute the partial derivative of each value 
+        // iterate for each layer and use the errors to compute the partial derivative of each value
         for l in 1..self.num_layers {
-            nabla_b.push(errors[l].clone());                                     //  <<< hmmmm... check that
-            nabla_w.push(&errors[l] * &self.layers[l-1].get_a().transpose());
+            nabla_b.push(errors[l].clone()); //  <<< hmmmm... check that
+            nabla_w.push(&errors[l] * &self.layers[l - 1].get_a().transpose());
         }
 
-
-        return Some(CostGradient{nabla_w, nabla_b});
+        return Some(CostGradient { nabla_w, nabla_b });
     }
 
     /// Measuring the error of the output layer    
-    fn output_error(&self, expected: &DVector<f64>, z: &DVector<f64>) -> Option<DVector<f64>> {
-        // Gradient respect to a
-        let option_cgra = self.cst_fn.gradient_a(expected, self.get_output());
-        if let Some(gradient_a) = option_cgra {
-            Some(gradient_a.component_mul(&self.act_fn.derivative(z)))
-        } else {
-            None
-        }
+    fn output_error(&self, expected: &DVector<f64>, z: &DVector<f64>) -> DVector<f64> {
+        let context: NeuralFunctionContext = NeuralFunctionContext {
+            a: self.get_output(),
+            y: expected,
+            z: z,
+            activ_fn: self.act_fn,
+            cost_fn: self.cst_fn,
+        };
+
+        self.cst_fn.delta(context)
     }
 
     /// Calls the assigned activation functionx
-    fn sigma(&self, x_ref: &DVector<f64>) -> DVector<f64> {
-        self.act_fn.function(x_ref)
+    fn v_sigma(&self, x_ref: &DVector<f64>) -> DVector<f64> {
+        let mut ret = DVector::from(x_ref.clone());
+        for i in 0..DVector::nrows(&ret) {
+            ret[i] = self.act_fn.fun(ret[i]);
+        }
+        return ret;
     }
 
+    fn v_sigma_prime(&self, x_ref: &DVector<f64>) -> DVector<f64> {
+        let mut ret = DVector::from(x_ref.clone());
+        for i in 0..DVector::nrows(&ret) {
+            ret[i] = self.act_fn.prime(ret[i]);
+        }
+        return ret;
+    }
 }
 
 #[derive(Clone, Debug)]
 struct Layer {
-    z: DVector<f64>,      // weigthed inputs    z = b * a + b
-    a: DVector<f64>,      // activations : a = s(z)
+    z: DVector<f64>, // weigthed inputs    z = b * a + b
+    a: DVector<f64>, // activations : a = s(z)
 
-    b: DVector<f64>       // biases
+    b: DVector<f64>, // biases
 }
 impl Layer {
-    //TODO: missing size checking
-
-    pub fn new(size:usize) -> Self{
+    pub fn new(size: usize) -> Self {
         Self {
             a: DVector::zeros(size),
             z: DVector::zeros(size),
-            
-            b: DVector::from_fn(
-                size,
-                |_i, _j| -> f64 { random::<f64>() * 2.0 - 0.5 }
-            ),
+
+            b: DVector::from_fn(size, |_i, _j| -> f64 { random::<f64>() * 2.0 - 0.5 }),
         }
     }
-    
-    pub fn size(&self) -> usize { self.a.nrows() }
+
+    pub fn size(&self) -> usize {
+        self.a.nrows()
+    }
 
     // GETTERS AND SETTERS
-    pub fn set_a(&mut self, new_a: &DVector<f64>) -> () { self.a = new_a.clone(); } 
-    pub fn get_a(&self) -> &DVector<f64>{ &(self.a) } 
+    pub fn set_a(&mut self, new_a: &DVector<f64>) -> () {
+        self.a = new_a.clone();
+    }
+    pub fn get_a(&self) -> &DVector<f64> {
+        &(self.a)
+    }
 
-    pub fn set_z(&mut self, new_z: &DVector<f64>) -> () { self.z = new_z.clone(); } 
-    pub fn get_z(&self) -> &DVector<f64>{ &(self.z) } 
-    
-    pub fn set_b(&mut self, new_b: &DVector<f64>) -> () { self.b = new_b.clone(); } // correct cloning??
-    pub fn get_b(&self) -> &DVector<f64>{ &(self.b) } 
+    pub fn set_z(&mut self, new_z: &DVector<f64>) -> () {
+        self.z = new_z.clone();
+    }
+    pub fn get_z(&self) -> &DVector<f64> {
+        &(self.z)
+    }
+
+    pub fn set_b(&mut self, new_b: &DVector<f64>) -> () {
+        self.b = new_b.clone();
+    } // correct cloning??
+    pub fn get_b(&self) -> &DVector<f64> {
+        &(self.b)
+    }
 }
 
 struct CostGradient {
     nabla_w: Vec<DMatrix<f64>>,
-    nabla_b: Vec<DVector<f64>>
+    nabla_b: Vec<DVector<f64>>,
 }
 
 fn tensor_to_f64(view: &TensorView) -> (Vec<f64>, Vec<usize>) {
     let data: Vec<f64> = view
         .data()
         .chunks_exact(8)
-        .map(|c| 
-            f64::from_le_bytes(c.try_into().unwrap()))
-            .collect();
+        .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+        .collect();
     (data, view.shape().to_vec())
 }
