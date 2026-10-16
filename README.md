@@ -16,14 +16,14 @@ Small library for creating, using and saving neural network models. Make a small
 
 Result pattern and testing. With these two feedback and code state upgrades.
 
-- [ ] Result pattern use
-- [ ] Testing        (dev use)        
+- [ ] Testing             
 - [x] Data provider:
 - [ ] Documentation
-- [ ] Softmax function
+- [ ] Softmax function: solution to make it extensible on the API
 - [ ] Study DRL (Deep Reinforcement Learning)
-- [ ] Formatter     (dev use)
-
+- [x] Formatter
+- [ ] Results extraction and plotting
+- [ ] 
 
 ## What can you do?
 

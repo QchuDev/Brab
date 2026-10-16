@@ -1,5 +1,3 @@
-use core::f64;
-
 use brab::{
     network::NeuralNetwork,
     neural_functions::{CrossEntropy, Mse, Sigmoid},
@@ -21,15 +19,14 @@ fn main() {
     let mse = Mse::new(); // Cost functions
     let cross_entropy = CrossEntropy::new();
 
-    // Load network
-    let mut net_mse: NeuralNetwork =
-        NeuralNetwork::new_load("models/model_1", &sigmoid, &mse).unwrap();
+    let net_shape: Vec<usize> = vec![784, 10, 10, 10];
 
-    let mut net_ce: NeuralNetwork =
-        NeuralNetwork::new_load("models/model_1", &sigmoid, &cross_entropy).unwrap();
+    // Create network
+    let mut net_mse: NeuralNetwork = NeuralNetwork::new(&net_shape, &sigmoid, &mse);
+    let mut net_ce: NeuralNetwork = NeuralNetwork::new(&net_shape, &sigmoid, &cross_entropy);
 
     // Run for 3 epochs
-    for _ in 0..1 {
+    for _ in 0..15 {
         println!(
             "{}",
             net_mse.train_multiple(0.06f64, train_data.clone()).unwrap()
@@ -38,13 +35,14 @@ fn main() {
             "{}",
             net_ce.train_multiple(0.06f64, train_data.clone()).unwrap()
         );
-    }
 
-    println!(
-        "Diff between last prediction: MSE {0} vs CE {1}",
-        net_mse.get_output(),
-        net_ce.get_output()
-    );
+        // Diff between epoch
+        println!(
+            "Diff between the max: MSE ({0}) vs CE ({1})",
+            net_mse.get_output().max(),
+            net_ce.get_output().max()
+        );
+    }
 
     // Save the model
     let _ = net_mse.save("models/net_mse");
