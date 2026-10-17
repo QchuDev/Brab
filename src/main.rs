@@ -1,5 +1,5 @@
 use brab::{
-    network::NeuralNetwork,
+    network::{NetworkConfig, NeuralNetwork},
     neural_functions::{CrossEntropy, Mse, Sigmoid},
 };
 use nalgebra::DVector;
@@ -21,12 +21,26 @@ fn main() {
 
     let net_shape: Vec<usize> = vec![784, 10, 10, 10];
 
+    let config_netmse = NetworkConfig {
+        layers_sizes: &net_shape,
+        new_act_fn: &sigmoid,
+        new_cst_fn: &mse,
+        has_softmax: true,
+    };
+
+    let config_netce = NetworkConfig {
+        layers_sizes: &net_shape,
+        new_act_fn: &sigmoid,
+        new_cst_fn: &cross_entropy,
+        has_softmax: true,
+    };
+
     // Create network
-    let mut net_mse: NeuralNetwork = NeuralNetwork::new(&net_shape, &sigmoid, &mse);
-    let mut net_ce: NeuralNetwork = NeuralNetwork::new(&net_shape, &sigmoid, &cross_entropy);
+    let mut net_mse: NeuralNetwork = NeuralNetwork::new(config_netmse);
+    let mut net_ce: NeuralNetwork = NeuralNetwork::new(config_netce);
 
     // Run for 3 epochs
-    for _ in 0..15 {
+    for _ in 0..1 {
         println!(
             "{}",
             net_mse.train_multiple(0.06f64, train_data.clone()).unwrap()
@@ -39,12 +53,8 @@ fn main() {
         // Diff between epoch
         println!(
             "Diff between the max: MSE ({0}) vs CE ({1})",
-            net_mse.get_output().max(),
-            net_ce.get_output().max()
+            net_mse.get_output(),
+            net_ce.get_output()
         );
     }
-
-    // Save the model
-    let _ = net_mse.save("models/net_mse");
-    let _ = net_ce.save("models/net_ce");
 }

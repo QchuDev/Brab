@@ -1,4 +1,4 @@
-use crate::neural_functions::{ActivationFunction, CostFunction};
+use crate::neural_functions::{ActivationFunction, CostFunction, SoftMax};
 use crate::{data::TrainData, neural_functions::NeuralFunctionContext};
 use core::f64;
 use nalgebra::{self, DMatrix, DVector};
@@ -7,37 +7,37 @@ use safetensors::{Dtype, SafeTensorError, SafeTensors, serialize_to_file, tensor
 use std::error::Error;
 use tuple_conv::TupleOrVec;
 
+static SOFTMAX: SoftMax = SoftMax::new();
 /*
     On this NeuralNetwork we distinguish the hidden layers from the input and output ones
 */
 pub struct NeuralNetwork<'a> {
-    layers: Vec<Layer>,                 // layers of neurons: current activation values
-    weights: Vec<DMatrix<f64>>,         // in-between weights matrices
-    num_layers: usize,                  // number of layers
-    act_fn: &'a dyn ActivationFunction, // activation function
-    cst_fn: &'a dyn CostFunction,       // cost function
+    layers: Vec<Layer<'a>>,       // layers of neurons: current activation values
+    weights: Vec<DMatrix<f64>>,   // in-between weights matrices
+    num_layers: usize,            // number of layers
+    cst_fn: &'a dyn CostFunction, // cost function
 }
 impl<'a> NeuralNetwork<'a> {
     /// Create a NEW Neural Network by passing size of each layer
-    pub fn new(
-        layers_sizes: &Vec<usize>,
-        new_act_fn: &'a dyn ActivationFunction,
-        new_cst_fn: &'a dyn CostFunction,
-    ) -> NeuralNetwork<'a> {
-        let new_num_layers = Vec::len(&layers_sizes);
+    pub fn new(config: NetworkConfig<'a>) -> NeuralNetwork<'a> {
+        let new_num_layers = Vec::len(&config.layers_sizes);
 
         // Create each layer of zeros with the specified sizes
         let mut new_layers = vec![];
-        for s in layers_sizes {
-            new_layers.push(Layer::new(*s));
+        for (i, size) in config.layers_sizes.iter().enumerate() {
+            if i == config.layers_sizes.len() - 1 && config.has_softmax {
+                new_layers.push(Layer::new(*size, &SOFTMAX));
+                break;
+            }
+            new_layers.push(Layer::new(*size, config.new_act_fn));
         }
 
         // Create each in-between matrix of random weights
         let mut new_weights: Vec<DMatrix<f64>> = vec![];
         for i in 0..(new_num_layers - 1) {
             new_weights.push(DMatrix::from_fn(
-                layers_sizes[i + 1],
-                layers_sizes[i],
+                config.layers_sizes[i + 1],
+                config.layers_sizes[i],
                 |_i, _j| -> f64 { random::<f64>() * 2.0 - 1.0 },
             ));
         }
@@ -46,8 +46,7 @@ impl<'a> NeuralNetwork<'a> {
             layers: new_layers,
             weights: new_weights,
             num_layers: new_num_layers,
-            act_fn: new_act_fn,
-            cst_fn: new_cst_fn,
+            cst_fn: config.new_cst_fn,
         };
     }
 
@@ -56,6 +55,7 @@ impl<'a> NeuralNetwork<'a> {
         file_path: &str,
         act_fn: &'a dyn ActivationFunction,
         cst_fn: &'a dyn CostFunction,
+        has_softmax: bool,
     ) -> Result<NeuralNetwork<'a>, SafeTensorError> {
         let file = std::fs::read(file_path)?;
         let tensors = SafeTensors::deserialize(&file)?;
@@ -79,10 +79,21 @@ impl<'a> NeuralNetwork<'a> {
             let b = DVector::from_vec(bias_data);
             let size = b.nrows();
 
+            if has_softmax && l == num_layers - 1 {
+                new_layers.push(Layer {
+                    a: DVector::zeros(size),
+                    z: DVector::zeros(size),
+                    b: b,
+                    activation: &SOFTMAX,
+                });
+                break;
+            }
+
             new_layers.push(Layer {
                 a: DVector::zeros(size),
                 z: DVector::zeros(size),
-                b,
+                b: b,
+                activation: act_fn,
             });
         }
 
@@ -103,7 +114,6 @@ impl<'a> NeuralNetwork<'a> {
             layers: new_layers,
             weights: new_weights,
             num_layers,
-            act_fn,
             cst_fn,
         })
     }
@@ -211,11 +221,11 @@ impl<'a> NeuralNetwork<'a> {
                 &(&self.weights[i - 1] * self.layers[i - 1].get_a() + self.layers[i].get_b());
             self.layers[i].set_z(new_z); // we save the weigthed input for later
 
-            let new_a = &self.v_sigma(new_z);
+            let new_a = &self.layers[i].activation.fun(new_z);
             self.layers[i].set_a(new_a);
         }
 
-        return Ok("Feeded");
+        return Ok("Yummy! Nice input");
     }
 
     /// Apply "stocastic gradient descent"
@@ -253,13 +263,22 @@ impl<'a> NeuralNetwork<'a> {
         }
 
         // Compute output_error
-        let output_error = self.output_error(&expected, self.layers[self.num_layers - 1].get_z());
+        let context: NeuralFunctionContext = NeuralFunctionContext {
+            a: self.get_output(),
+            y: &expected,
+            z: self.layers[self.num_layers - 1].get_z(),
+            activ_fn: self.layers[self.num_layers - 1].activation,
+            cost_fn: self.cst_fn,
+        };
+        let output_error = self.cst_fn.delta(context);
         deltas[self.num_layers - 1] = output_error;
 
         // Backpropagate the error
         for l in (1..self.num_layers).rev() {
             let p_error = &self.weights[l - 1].transpose() * &deltas[l];
-            let sigmap_z = self.v_sigma_prime(self.layers[l - 1].get_z());
+            let sigmap_z = self.layers[l - 1]
+                .activation
+                .prime(self.layers[l - 1].get_z());
             let error_l = p_error.component_mul(&sigmap_z); // <-- check this 
 
             deltas[l - 1] = error_l;
@@ -277,51 +296,29 @@ impl<'a> NeuralNetwork<'a> {
 
         return Some(CostGradient { nabla_w, nabla_b });
     }
-
-    /// Measuring the error of the output layer    
-    fn output_error(&self, expected: &DVector<f64>, z: &DVector<f64>) -> DVector<f64> {
-        let context: NeuralFunctionContext = NeuralFunctionContext {
-            a: self.get_output(),
-            y: expected,
-            z: z,
-            activ_fn: self.act_fn,
-            cost_fn: self.cst_fn,
-        };
-
-        self.cst_fn.delta(context)
-    }
-
-    /// Calls the assigned activation functionx
-    fn v_sigma(&self, x_ref: &DVector<f64>) -> DVector<f64> {
-        let mut ret = DVector::from(x_ref.clone());
-        for i in 0..DVector::nrows(&ret) {
-            ret[i] = self.act_fn.fun(ret[i]);
-        }
-        return ret;
-    }
-
-    fn v_sigma_prime(&self, x_ref: &DVector<f64>) -> DVector<f64> {
-        let mut ret = DVector::from(x_ref.clone());
-        for i in 0..DVector::nrows(&ret) {
-            ret[i] = self.act_fn.prime(ret[i]);
-        }
-        return ret;
-    }
 }
 
-#[derive(Clone, Debug)]
-struct Layer {
+pub struct NetworkConfig<'a> {
+    pub layers_sizes: &'a Vec<usize>,
+    pub new_act_fn: &'a dyn ActivationFunction,
+    pub new_cst_fn: &'a dyn CostFunction,
+    pub has_softmax: bool,
+}
+
+struct Layer<'a> {
     z: DVector<f64>, // weigthed inputs    z = b * a + b
     a: DVector<f64>, // activations : a = s(z)
-    b: DVector<f64>, // biases
+    b: DVector<f64>, // biase
+    activation: &'a dyn ActivationFunction,
 }
-impl Layer {
-    pub fn new(size: usize) -> Self {
-        Self {
+impl<'a> Layer<'a> {
+    pub fn new(size: usize, activation_function: &'a dyn ActivationFunction) -> Layer<'a> {
+        Layer {
             a: DVector::zeros(size),
             z: DVector::zeros(size),
 
             b: DVector::from_fn(size, |_i, _j| -> f64 { random::<f64>() * 2.0 - 0.5 }),
+            activation: activation_function,
         }
     }
 
