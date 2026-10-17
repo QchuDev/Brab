@@ -23,7 +23,7 @@ Result pattern and testing. With these two feedback and code state upgrades.
 - [ ] Study DRL (Deep Reinforcement Learning)
 - [x] Formatter
 - [ ] Results extraction and plotting
-- [ ] 
+- [ ] Make API examples for MNIST and some game for DRL
 
 ## What can you do?
 

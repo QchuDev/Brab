@@ -200,14 +200,19 @@ impl<'a> NeuralNetwork<'a> {
             return Err("Not the same size");
         }
 
+        // input case (just set the input)
         self.layers[0].set_a(&input);
-        for i in 1..(self.num_layers) {
-            let z_prime =
-                &(&self.weights[i - 1] * self.layers[i - 1].get_a() + self.layers[i].get_b());
-            self.layers[i].set_z(z_prime); // we save the weigthed input for later
 
-            let a_prime = &self.v_sigma(z_prime);
-            self.layers[i].set_a(a_prime);
+        // hidden layers
+        // remember to change this for n-1 when hidden layers
+        // only
+        for i in 1..(self.num_layers) {
+            let new_z =
+                &(&self.weights[i - 1] * self.layers[i - 1].get_a() + self.layers[i].get_b());
+            self.layers[i].set_z(new_z); // we save the weigthed input for later
+
+            let new_a = &self.v_sigma(new_z);
+            self.layers[i].set_a(new_a);
         }
 
         return Ok("Feeded");
@@ -241,23 +246,23 @@ impl<'a> NeuralNetwork<'a> {
     // Called to get the  partial derivatives
     fn backprop(&mut self, expected: DVector<f64>) -> Option<CostGradient> {
         // Vector to save tje errors for each layer
-        let mut errors: Vec<DVector<f64>> = Vec::new();
+        let mut deltas: Vec<DVector<f64>> = Vec::new();
         for layer in &self.layers {
             // if (l == 0 || l == self.num_layers-1) { continue }  // needed???
-            errors.push(DVector::zeros(layer.size()));
+            deltas.push(DVector::zeros(layer.size()));
         }
 
         // Compute output_error
         let output_error = self.output_error(&expected, self.layers[self.num_layers - 1].get_z());
-        errors[self.num_layers - 1] = output_error;
+        deltas[self.num_layers - 1] = output_error;
 
         // Backpropagate the error
         for l in (1..self.num_layers).rev() {
-            let p_error = &self.weights[l - 1].transpose() * &errors[l];
+            let p_error = &self.weights[l - 1].transpose() * &deltas[l];
             let sigmap_z = self.v_sigma_prime(self.layers[l - 1].get_z());
             let error_l = p_error.component_mul(&sigmap_z); // <-- check this 
 
-            errors[l - 1] = error_l;
+            deltas[l - 1] = error_l;
         }
 
         // output - Gradient of the cost function
@@ -266,8 +271,8 @@ impl<'a> NeuralNetwork<'a> {
 
         // iterate for each layer and use the errors to compute the partial derivative of each value
         for l in 1..self.num_layers {
-            nabla_b.push(errors[l].clone()); //  <<< hmmmm... check that
-            nabla_w.push(&errors[l] * &self.layers[l - 1].get_a().transpose());
+            nabla_b.push(deltas[l].clone()); //  <<< hmmmm... check that
+            nabla_w.push(&deltas[l] * &self.layers[l - 1].get_a().transpose());
         }
 
         return Some(CostGradient { nabla_w, nabla_b });
@@ -308,7 +313,6 @@ impl<'a> NeuralNetwork<'a> {
 struct Layer {
     z: DVector<f64>, // weigthed inputs    z = b * a + b
     a: DVector<f64>, // activations : a = s(z)
-
     b: DVector<f64>, // biases
 }
 impl Layer {
