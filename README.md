@@ -19,11 +19,12 @@ Result pattern and testing. With these two feedback and code state upgrades.
 - [ ] Testing             
 - [x] Data provider:
 - [ ] Documentation
-- [ ] Softmax function: solution to make it extensible on the API
+- [x] Softmax function: solution to make it extensible on the API
 - [ ] Study DRL (Deep Reinforcement Learning)
 - [x] Formatter
 - [ ] Results extraction and plotting
-- [ ] Make API examples for MNIST and some game for DRL
+- [x] Use API for MNIST
+- [ ] Use API for any game
 
 ## What can you do?
 
