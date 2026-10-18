@@ -18,7 +18,7 @@ fn main() {
 
     let cross_entropy = CrossEntropy::new();
 
-    let net_shape: Vec<usize> = vec![784, 10, 10, 10];
+    let net_shape: Vec<usize> = vec![784, 8, 5, 10];
 
     let config_netce = NetworkConfig {
         layers_sizes: &net_shape,
@@ -28,7 +28,13 @@ fn main() {
     };
 
     // Create network
-    let mut net_ce: NeuralNetwork = NeuralNetwork::new(config_netce);
+    let mut net_ce: NeuralNetwork = NeuralNetwork::new_load(
+        "models/net_ce",
+        config_netce.new_act_fn,
+        config_netce.new_cst_fn,
+        true,
+    )
+    .unwrap();
 
     // Run for 3 epochs
     for _ in 0..1 {
@@ -37,4 +43,6 @@ fn main() {
             net_ce.train_multiple(0.06f64, train_data.clone()).unwrap()
         );
     }
+
+    let _ = net_ce.save("models/net_ce");
 }

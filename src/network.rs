@@ -7,7 +7,8 @@ use safetensors::{Dtype, SafeTensorError, SafeTensors, serialize_to_file, tensor
 use std::error::Error;
 use tuple_conv::TupleOrVec;
 
-static SOFTMAX: SoftMax = SoftMax::new();
+static SOFTMAX: SoftMax = SoftMax::new(); // is it good to have this here? maybe for now...
+
 /*
     On this NeuralNetwork we distinguish the hidden layers from the input and output ones
 */
@@ -131,13 +132,24 @@ impl<'a> NeuralNetwork<'a> {
     }
 
     pub fn train_multiple(&mut self, eta: f64, train_data: Vec<TrainData>) -> Result<&str, String> {
-        for td in train_data {
-            let _ = self.feed_forward(td.input);
+        let mut sum = 0;
+        for td in &train_data {
+            let _ = self.feed_forward(td.input.clone());
 
             if let Err(msg) = self.sgd(eta, td.expected.clone()) {
                 return Err(msg.to_string());
             }
+
+            let alignment = td.expected.dot(self.get_output());
+            if alignment > 0.9 {
+                println!("Hit! {}", alignment);
+                sum += 1;
+            } else {
+                println!("Oh.. {}", alignment);
+            }
         }
+
+        println!("{} / {}", sum, train_data.len());
 
         return Ok("All training data processed");
     }
@@ -151,6 +163,17 @@ impl<'a> NeuralNetwork<'a> {
 
     pub fn get_output(&self) -> &DVector<f64> {
         self.layers[self.num_layers - 1].get_a()
+    }
+
+    pub fn get_output_error(&self, expected: &DVector<f64>) -> DVector<f64> {
+        let context: NeuralFunctionContext = NeuralFunctionContext {
+            a: self.get_output(),
+            y: &expected,
+            z: self.layers[self.num_layers - 1].get_z(),
+            activ_fn: self.layers[self.num_layers - 1].activation,
+            cost_fn: self.cst_fn,
+        };
+        self.cst_fn.delta(context)
     }
 
     pub fn save(&self, file_path: &str) -> Result<(), Box<dyn Error>> {
@@ -263,15 +286,7 @@ impl<'a> NeuralNetwork<'a> {
         }
 
         // Compute output_error
-        let context: NeuralFunctionContext = NeuralFunctionContext {
-            a: self.get_output(),
-            y: &expected,
-            z: self.layers[self.num_layers - 1].get_z(),
-            activ_fn: self.layers[self.num_layers - 1].activation,
-            cost_fn: self.cst_fn,
-        };
-        let output_error = self.cst_fn.delta(context);
-        deltas[self.num_layers - 1] = output_error;
+        deltas[self.num_layers - 1] = self.get_output_error(&expected);
 
         // Backpropagate the error
         for l in (1..self.num_layers).rev() {
