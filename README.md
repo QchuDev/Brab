@@ -20,7 +20,15 @@ Result pattern and testing. With these two feedback and code state upgrades.
 - [x] Data provider:
 - [ ] Documentation
 - [x] Softmax function: solution to make it extensible on the API
+
 - [ ] Study DRL (Deep Reinforcement Learning)
+- [ ] Implement DRL capabilities
+- [ ] Learn & Implement Q-Learning
+
+- [ ] Implement Genetic Algorithm capabilities
+
+- [ ] Segregate responsabilities from NeuralNetwork
+
 - [x] Formatter
 - [ ] Results extraction and plotting
 - [x] Use API for MNIST

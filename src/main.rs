@@ -1,6 +1,7 @@
 use brab::{
     network::{NetworkConfig, NeuralNetwork},
     neural_functions::{CrossEntropy, Sigmoid},
+    training::{SGD, Trainer},
 };
 use nalgebra::DVector;
 
@@ -11,7 +12,7 @@ fn main() {
 
     // Get data from MNIST data-set
     let mnist_prov = MnistProvider::new();
-    let train_data = &mnist_prov.get_data();
+    let train_data = mnist_prov.get_data();
 
     // Define the functions to use
     let sigmoid = Sigmoid::new(); // Activation function
@@ -20,29 +21,13 @@ fn main() {
 
     let net_shape: Vec<usize> = vec![784, 8, 5, 10];
 
-    let config_netce = NetworkConfig {
+    let config = NetworkConfig {
         layers_sizes: &net_shape,
         new_act_fn: &sigmoid,
         new_cst_fn: &cross_entropy,
         has_softmax: true,
     };
 
-    // Create network
-    let mut net_ce: NeuralNetwork = NeuralNetwork::new_load(
-        "models/net_ce",
-        config_netce.new_act_fn,
-        config_netce.new_cst_fn,
-        true,
-    )
-    .unwrap();
-
-    // Run for 3 epochs
-    for _ in 0..1 {
-        println!(
-            "{}",
-            net_ce.train_multiple(0.06f64, train_data.clone()).unwrap()
-        );
-    }
-
-    let _ = net_ce.save("models/net_ce");
+    let mut net = NeuralNetwork::new(config);
+    Trainer::train(&mut net, train_data, &SGD::new(0.06f64), 3);
 }
