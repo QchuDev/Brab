@@ -27,7 +27,7 @@ impl NetworkPersistence {
 
         // All biases (one per layer, including input and output layers)
         for l in 0..network.num_layers {
-            let vec_b: Vec<f64> = network.layers[l].b.as_slice().to_vec();
+            let vec_b: Vec<f64> = network.layers[l].get_b().as_slice().to_vec();
             b_sizes.push(vec_b.len());
             b_buffers.push(vec_b.iter().flat_map(|v| v.to_le_bytes()).collect());
         }
@@ -87,21 +87,14 @@ impl NetworkPersistence {
             let size = b.nrows();
 
             if has_softmax && l == num_layers - 1 {
-                new_layers.push(Layer {
-                    a: DVector::zeros(size),
-                    z: DVector::zeros(size),
-                    b: b,
-                    activation: &SOFTMAX,
-                });
+                let mut last_layer = Layer::new(size, &SOFTMAX);
+                last_layer.set_b(b);
+                new_layers.push(last_layer);
                 break;
             }
-
-            new_layers.push(Layer {
-                a: DVector::zeros(size),
-                z: DVector::zeros(size),
-                b: b,
-                activation: act_fn,
-            });
+            let mut nl = Layer::new(size, act_fn);
+            nl.set_b(b);
+            new_layers.push(nl);
         }
 
         // Extracting weights

@@ -27,7 +27,8 @@ Result pattern and testing. With these two feedback and code state upgrades.
 
 - [ ] Implement Genetic Algorithm capabilities
 
-- [ ] Segregate responsabilities from NeuralNetwork
+- [x] Segregate responsabilities from NeuralNetwork
+- [ ] Builder pattern for a reactive way of creating a NeuralNetwork
 
 - [x] Formatter
 - [ ] Results extraction and plotting

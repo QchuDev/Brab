@@ -1,6 +1,7 @@
 use crate::data::TrainData;
 use crate::network::{NeuralNetwork, ParametersGradient};
 use core::f64;
+use std::fmt::{Display, Formatter, Result};
 
 pub struct Trainer {}
 impl Trainer {
@@ -9,21 +10,70 @@ impl Trainer {
         train_data: Vec<TrainData>,
         optimizer: &dyn Optimizer,
         epochs: i32,
-    ) {
+    ) -> Vec<EpochResult> {
+        let mut results = Vec::new();
         for _e in 0..epochs {
-            for td in &train_data {
-                let _ = network.feed_forward(td.input.clone());
+            let mut epoch_res = vec![
+                vec![0.0, 0.95],
+                vec![0.0, 0.90],
+                vec![0.0, 0.50],
+                vec![0.0, 0.25],
+            ];
+            let n: f64 = train_data.len() as f64;
 
+            for td in &train_data {
+                // Feed
+                network.feed_forward(td.input.clone());
+
+                // Calculate Parameters change
                 let gradient = &network.backprop(td.expected.clone()).unwrap();
                 optimizer.step(network, gradient);
-                println!("{}", network.get_output());
+
+                // FROM HERE ITS ALL RESULTS EXTRACTION
+                let dot = td.expected.dot(network.get_output());
+
+                epoch_res = epoch_res
+                    .iter()
+                    .map(|x| -> Vec<f64> {
+                        let mut increment = 0.0;
+                        if dot >= x[1] {
+                            increment += 1.0;
+                        }
+                        vec![x[0] + increment, x[1]]
+                    })
+                    .collect();
             }
-            println!("Processed {}/{} epochs", _e, epochs);
+            epoch_res = epoch_res.iter().map(|e| vec![e[0] / n, e[1]]).collect();
+            results.push(EpochResult {
+                freq_over: epoch_res,
+            });
+            println!("Processed {}/{} epochs", _e + 1, epochs);
         }
+        return results;
     }
 }
 
-/// This trait is for those that update parameters inside the network
+pub struct EpochResult {
+    freq_over: Vec<Vec<f64>>,
+}
+impl Display for EpochResult {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        // Write strictly the first element into the supplied output
+        // stream: `f`. Returns `fmt::Result` which indicates whether the
+        // operation succeeded or failed. Note that `write!` uses syntax which
+        // is very similar to `println!`.
+        let output: String = self
+            .freq_over
+            .iter()
+            .map(|f_v| format!("(f={}, p={})\n", f_v[0], f_v[1]))
+            .collect();
+
+        write!(f, "{}", output)
+    }
+}
+
+/// This traits for those that update parameters inside the network
 pub trait Optimizer {
     fn step(&self, network: &mut NeuralNetwork, gradient: &ParametersGradient);
 }
@@ -45,8 +95,8 @@ impl Optimizer for SGD {
         }
 
         for i in 0..network.layers.len() - 1 {
-            network.layers[i + 1].b =
-                &network.layers[i + 1].b - self.learning_rate * &gradient.nabla_b[i];
+            let new_b = network.layers[i + 1].get_b() - self.learning_rate * &gradient.nabla_b[i];
+            network.layers[i + 1].set_b(new_b);
         }
     }
 }

@@ -1,4 +1,63 @@
+use brab::{
+    network::{Layer, NetworkConfig, NeuralNetwork},
+    neural_functions::{ActivationFunction, CostFunction, NeuralFunctionContext},
+};
+use nalgebra::DVector;
+
 // yeah... there are no tests by now
 //
 // is that bad? nah, for now its not, I trust my code.
 // Of course it will fail, then I'll debug and test specific types
+struct DummyActivation {}
+impl ActivationFunction for DummyActivation {
+    fn fun(&self, x: DVector<f64>) -> DVector<f64> {
+        x.clone()
+    }
+    fn prime(&self, x: DVector<f64>) -> DVector<f64> {
+        x.clone()
+    }
+}
+
+struct DummyCost {}
+impl CostFunction for DummyCost {
+    fn delta(&self, context: NeuralFunctionContext) -> DVector<f64> {
+        DVector::zeros(context.a.len())
+    }
+}
+
+#[test]
+fn test_layers() {
+    let dim = 3;
+    let mut layer = Layer::new(dim, &DummyActivation {});
+
+    layer.set_a(DVector::repeat(3, 1.0));
+    layer.set_z(DVector::repeat(3, 1.0));
+    layer.set_b(DVector::repeat(3, 1.0));
+
+    assert!(layer.get_a().eq(&DVector::repeat(3, 1.0)));
+    assert!(layer.get_z().eq(&DVector::repeat(3, 1.0)));
+    assert!(layer.get_b().eq(&DVector::repeat(3, 1.0)));
+}
+
+#[test]
+fn test_network_feed() {
+    let config = NetworkConfig {
+        layers_sizes: &vec![3, 4, 4],
+        new_act_fn: &DummyActivation {},
+        new_cst_fn: &DummyCost {},
+        has_softmax: true,
+    };
+
+    let mut net = NeuralNetwork::new(config);
+    let input = DVector::from(vec![1.0, 1.0, 1.0]);
+
+    let prev_ouput = net.get_output().clone();
+    net.feed_forward(input.clone());
+
+    let post_output = net.get_output().clone();
+
+    assert!(!prev_ouput.eq(&post_output));
+}
+
+#[test]
+fn test_network_backprop() {}

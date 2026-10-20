@@ -9,8 +9,8 @@ pub struct NeuralFunctionContext<'a> {
 }
 
 pub trait ActivationFunction {
-    fn fun(&self, x: &DVector<f64>) -> DVector<f64>;
-    fn prime(&self, x: &DVector<f64>) -> DVector<f64>;
+    fn fun(&self, x: DVector<f64>) -> DVector<f64>;
+    fn prime(&self, x: DVector<f64>) -> DVector<f64>;
 }
 
 pub trait CostFunction {
@@ -28,10 +28,10 @@ impl Sigmoid {
     }
 }
 impl ActivationFunction for Sigmoid {
-    fn fun(&self, x: &DVector<f64>) -> DVector<f64> {
+    fn fun(&self, x: DVector<f64>) -> DVector<f64> {
         x.map(|x_i| sigmoid(x_i))
     }
-    fn prime(&self, x: &DVector<f64>) -> DVector<f64> {
+    fn prime(&self, x: DVector<f64>) -> DVector<f64> {
         x.map(|x_i| sigmoid_prime(x_i))
     }
 }
@@ -49,11 +49,11 @@ impl SoftMax {
     }
 }
 impl ActivationFunction for SoftMax {
-    fn fun(&self, x: &DVector<f64>) -> DVector<f64> {
+    fn fun(&self, x: DVector<f64>) -> DVector<f64> {
         x.map(|x_i| x_i.exp() / (x.map(|x_i| x_i.exp()).sum()))
     }
-    fn prime(&self, x: &DVector<f64>) -> DVector<f64> {
-        self.fun(x)
+    fn prime(&self, x: DVector<f64>) -> DVector<f64> {
+        self.fun(x.clone())
             .component_mul(&(DVector::repeat(x.nrows(), 1.0) - &self.fun(x)))
     }
 }
@@ -67,7 +67,7 @@ impl Mse {
 }
 impl CostFunction for Mse {
     fn delta(&self, context: NeuralFunctionContext) -> DVector<f64> {
-        let sigmap_z = context.activ_fn.prime(context.z);
+        let sigmap_z = context.activ_fn.prime(context.z.clone());
         (context.a - context.y).component_mul(&sigmap_z)
     }
 }

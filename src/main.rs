@@ -29,5 +29,9 @@ fn main() {
     };
 
     let mut net = NeuralNetwork::new(config);
-    Trainer::train(&mut net, train_data, &SGD::new(0.06f64), 3);
+    let results = Trainer::train(&mut net, train_data, &SGD::new(0.06f64), 3);
+    results
+        .iter()
+        .enumerate()
+        .for_each(|(i, e_res)| println!("Results of epoch {}: \n{}", (i + 1), e_res));
 }

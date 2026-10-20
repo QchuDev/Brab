@@ -56,14 +56,14 @@ impl<'a> NeuralNetwork<'a> {
 
     /// Feed with an input to update the layers of the Neural Network
     pub fn feed_forward(&mut self, input: DVector<f64>) {
-        self.layers[0].a = input;
+        self.layers[0].set_a(input);
 
         for i in 1..self.num_layers {
-            let new_z = &self.weights[i - 1] * &self.layers[i - 1].a + &self.layers[i].b;
-            self.layers[i].z = new_z.clone(); // we save the weigthed input for later
+            let new_z = &self.weights[i - 1] * self.layers[i - 1].get_a() + self.layers[i].get_b();
+            self.layers[i].set_z(new_z.clone()); // we save the weigthed input for later
 
-            let new_a = self.layers[i].activation.fun(&new_z);
-            self.layers[i].z = new_a;
+            let new_a = self.layers[i].activation.fun(new_z);
+            self.layers[i].set_a(new_a);
         }
     }
 
@@ -78,7 +78,7 @@ impl<'a> NeuralNetwork<'a> {
 
         // Compute output_error
         let context: NeuralFunctionContext = NeuralFunctionContext {
-            a: self.get_output(),
+            a: &self.get_output(),
             y: &expected,
             z: &self.layers[self.num_layers - 1].z,
             activ_fn: self.layers[self.num_layers - 1].activation,
@@ -89,7 +89,9 @@ impl<'a> NeuralNetwork<'a> {
         // Backpropagate the error
         for l in (1..self.num_layers).rev() {
             let p_error = &self.weights[l - 1].transpose() * &deltas[l];
-            let sigmap_z = self.layers[l - 1].activation.prime(&self.layers[l - 1].z);
+            let sigmap_z = self.layers[l - 1]
+                .activation
+                .prime(self.layers[l - 1].get_z().clone());
             let error_l = p_error.component_mul(&sigmap_z); // <-- check this 
 
             deltas[l - 1] = error_l;
@@ -110,15 +112,19 @@ impl<'a> NeuralNetwork<'a> {
 
     // GETTERS & SETTERS vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     pub fn get_output(&self) -> &DVector<f64> {
-        &self.layers[self.num_layers - 1].a
+        let ret = self.layers[self.num_layers - 1].get_a();
+        ret
     }
 }
 
+/*
+    Layer struct contains a, z and b column vectors. Also a reference to the activation function in use
+*/
 pub struct Layer<'a> {
-    pub z: DVector<f64>, // weigthed inputs    z = b * a + b
-    pub a: DVector<f64>, // activations : a = s(z)
-    pub b: DVector<f64>, // biase
-    pub activation: &'a dyn ActivationFunction,
+    z: DVector<f64>, // weigthed inputs    z = b * a + b
+    a: DVector<f64>, // activations : a = s(z)
+    b: DVector<f64>, // biase
+    activation: &'a dyn ActivationFunction,
 }
 impl<'a> Layer<'a> {
     pub fn new(size: usize, activation_function: &'a dyn ActivationFunction) -> Layer<'a> {
@@ -133,6 +139,25 @@ impl<'a> Layer<'a> {
 
     pub fn size(&self) -> usize {
         self.a.nrows()
+    }
+
+    pub fn get_a(&self) -> &DVector<f64> {
+        &self.a
+    }
+    pub fn set_a(&mut self, new_a: DVector<f64>) {
+        self.a = new_a
+    }
+    pub fn get_z(&self) -> &DVector<f64> {
+        &self.z
+    }
+    pub fn set_z(&mut self, new_z: DVector<f64>) {
+        self.z = new_z
+    }
+    pub fn get_b(&self) -> &DVector<f64> {
+        &self.b
+    }
+    pub fn set_b(&mut self, new_b: DVector<f64>) {
+        self.b = new_b
     }
 }
 
