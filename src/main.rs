@@ -1,7 +1,8 @@
 use brab::{
-    network::{NetworkConfig, NeuralNetwork},
-    neural_functions::{CrossEntropy, Sigmoid},
-    training::{SGD, Trainer},
+    config::NetworkConfig,
+    consts::{CROSS_ENTROPY, SIGMOID},
+    network::NeuralNetwork,
+    training::{EpochResult, SGD, Trainer},
 };
 use nalgebra::DVector;
 
@@ -10,26 +11,23 @@ include!("mnist_data.rs");
 fn main() {
     println!("Start..\n");
 
-    // Get data from MNIST data-set
-    let mnist_prov = MnistProvider::new();
-    let train_data = mnist_prov.get_data();
+    let config = NetworkConfig::new()
+        .with_shape(&[784, 8, 8, 10])
+        .with_activation(&SIGMOID)
+        .with_cost(&CROSS_ENTROPY)
+        .with_sofmax()
+        .build();
 
-    // Define the functions to use
-    let sigmoid = Sigmoid::new(); // Activation function
+    let mut network = NeuralNetwork::from_config(config);
 
-    let cross_entropy = CrossEntropy::new();
+    let provider = MnistProvider::new();
+    let train_data = provider.get_data();
 
-    let net_shape: Vec<usize> = vec![784, 8, 5, 10];
+    let results = Trainer::train(&mut network, train_data, &SGD::new(0.06f64), 2);
+    print_results(results.unwrap());
+}
 
-    let config = NetworkConfig {
-        layers_sizes: &net_shape,
-        new_act_fn: &sigmoid,
-        new_cst_fn: &cross_entropy,
-        has_softmax: true,
-    };
-
-    let mut net = NeuralNetwork::new(config);
-    let results = Trainer::train(&mut net, train_data, &SGD::new(0.06f64), 3);
+pub fn print_results(results: Vec<EpochResult>) {
     results
         .iter()
         .enumerate()

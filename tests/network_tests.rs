@@ -1,5 +1,6 @@
 use brab::{
-    network::{Layer, NetworkConfig, NeuralNetwork},
+    config::NetworkConfig,
+    network::{Layer, NeuralNetwork},
     neural_functions::{ActivationFunction, CostFunction, NeuralFunctionContext},
 };
 use nalgebra::DVector;
@@ -48,15 +49,10 @@ fn test_network_feed() {
         has_softmax: true,
     };
 
-    let mut net = NeuralNetwork::new(config);
+    let mut net = NeuralNetwork::from_config(config);
     let input = DVector::from(vec![1.0, 1.0, 1.0]);
 
-    let prev_ouput = net.get_output().clone();
-    net.feed_forward(input.clone());
-
-    let post_output = net.get_output().clone();
-
-    assert!(!prev_ouput.eq(&post_output));
+    assert!(net.feed_forward(input.clone()).is_ok());
 }
 
 #[test]

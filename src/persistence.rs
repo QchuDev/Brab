@@ -5,49 +5,52 @@ use safetensors::{Dtype, SafeTensorError, SafeTensors, serialize_to_file, tensor
 use tuple_conv::TupleOrVec;
 
 use crate::{
+    config::NetworkConfig,
     consts::SOFTMAX,
     network::{Layer, NeuralNetwork},
     neural_functions::{ActivationFunction, CostFunction},
 };
 
+// TODO: Rework the persistence, save more stuff to load better
+
 /// Save & Loader of models
 pub struct NetworkPersistence {}
 impl NetworkPersistence {
-    pub fn save(network: &NeuralNetwork, file_path: &str) -> Result<String, Box<dyn Error>> {
+    pub fn save(network: &mut NeuralNetwork, file_path: &str) -> Result<String, Box<dyn Error>> {
         // so every tensor must be serialized in a SINGLE call. We first build all
         // the byte buffers (which must outlive the TensorViews that borrow them),
         // then create the views, then serialize once.
 
         // 1) Flatten every bias and weight into little-endian byte buffers.
         //    We keep these buffers alive in `buffers` for the duration of the fn.
-        let mut b_buffers: Vec<Vec<u8>> = Vec::with_capacity(network.layers.len());
-        let mut w_buffers: Vec<Vec<u8>> = Vec::with_capacity(network.num_layers - 1);
-        let mut b_sizes: Vec<usize> = Vec::with_capacity(network.num_layers);
-        let mut w_shapes: Vec<Vec<usize>> = Vec::with_capacity(network.num_layers - 1);
+        let mut b_buffers: Vec<Vec<u8>> = Vec::with_capacity(network.get_size());
+        let mut w_buffers: Vec<Vec<u8>> = Vec::with_capacity(network.get_size() - 1);
+        let mut b_sizes: Vec<usize> = Vec::with_capacity(network.get_size());
+        let mut w_shapes: Vec<Vec<usize>> = Vec::with_capacity(network.get_size() - 1);
 
         // All biases (one per layer, including input and output layers)
-        for l in 0..network.num_layers {
-            let vec_b: Vec<f64> = network.layers[l].get_b().as_slice().to_vec();
+        for l in 0..network.get_size() {
+            let vec_b: Vec<f64> = network.get_bias(l).as_slice().to_vec();
             b_sizes.push(vec_b.len());
             b_buffers.push(vec_b.iter().flat_map(|v| v.to_le_bytes()).collect());
         }
 
         // All weight matrices (num_layers - 1 of them)
-        for l in 0..network.num_layers - 1 {
-            let vec_w: Vec<f64> = network.weights[l].as_slice().to_vec();
-            w_shapes.push(network.weights[l].shape().as_vec());
+        for l in 0..network.get_size() - 1 {
+            let vec_w: Vec<f64> = network.get_weight(l).as_slice().to_vec();
+            w_shapes.push(network.get_weight(l).shape().as_vec());
             w_buffers.push(vec_w.iter().flat_map(|v| v.to_le_bytes()).collect());
         }
 
         // 2) Build all tensor views, borrowing from the buffers above.
         let mut file_data: Vec<(String, TensorView)> = Vec::new();
 
-        for l in 0..network.num_layers {
+        for l in 0..network.get_size() {
             let view = TensorView::new(Dtype::F64, vec![b_sizes[l]], &b_buffers[l])?;
             file_data.push((format!("biases_{}", l), view));
         }
 
-        for l in 0..network.num_layers - 1 {
+        for l in 0..network.get_size() - 1 {
             let view = TensorView::new(Dtype::F64, w_shapes[l].clone(), &w_buffers[l])?;
             file_data.push((format!("weights_{}", l), view));
         }
@@ -77,7 +80,6 @@ impl NetworkPersistence {
         let mut new_weights: Vec<DMatrix<f64>> = Vec::with_capacity(num_layers - 1);
 
         // We know its indexed like 'name_{i}' so we use it to bring the values
-
         // Extracting biases
         for l in 0..num_layers {
             let bias_view = tensors.tensor(&format!("biases_{}", l))?;
@@ -86,14 +88,13 @@ impl NetworkPersistence {
             let b = DVector::from_vec(bias_data);
             let size = b.nrows();
 
-            if has_softmax && l == num_layers - 1 {
-                let mut last_layer = Layer::new(size, &SOFTMAX);
-                last_layer.set_b(b);
-                new_layers.push(last_layer);
-                break;
-            }
             let mut nl = Layer::new(size, act_fn);
-            nl.set_b(b);
+            // last layer adding softmax
+            if has_softmax && l == num_layers - 1 {
+                nl = Layer::new(size, &SOFTMAX);
+            }
+
+            // setting bias into layer
             new_layers.push(nl);
         }
 
@@ -110,12 +111,21 @@ impl NetworkPersistence {
             new_weights.push(w);
         }
 
-        Ok(NeuralNetwork {
-            layers: new_layers,
-            weights: new_weights,
-            num_layers,
-            cst_fn,
-        })
+        // we create the default network for now
+        let config = NetworkConfig::new()
+            .with_activation(act_fn)
+            .with_cost(cst_fn)
+            .build();
+
+        let mut net = NeuralNetwork::from_config(config);
+        for i in 0..num_layers {
+            net.set_bias(i, new_layers[i].get_b().clone());
+            if i < num_layers - 1 {
+                net.set_weight(i, new_weights[i].clone());
+            }
+        }
+
+        Ok(net)
     }
 }
 

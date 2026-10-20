@@ -1,3 +1,4 @@
+use crate::config::NetworkConfig;
 use crate::consts::SOFTMAX;
 use crate::neural_functions::NeuralFunctionContext;
 use crate::neural_functions::{ActivationFunction, CostFunction};
@@ -5,26 +6,19 @@ use core::f64;
 use nalgebra::{self, DMatrix, DVector};
 use rand::random;
 
-pub struct NetworkConfig<'a> {
-    pub layers_sizes: &'a Vec<usize>,
-    pub new_act_fn: &'a dyn ActivationFunction,
-    pub new_cst_fn: &'a dyn CostFunction,
-    pub has_softmax: bool,
-}
-
 /*
     On this NeuralNetwork we distinguish the hidden layers from the input and output ones
 */
 pub struct NeuralNetwork<'a> {
-    pub layers: Vec<Layer<'a>>, // layers of neurons: current activation values
-    pub weights: Vec<DMatrix<f64>>, // in-between weights matrices
-    pub num_layers: usize,      // number of layers
-    pub cst_fn: &'a dyn CostFunction, // cost function
+    layers: Vec<Layer<'a>>,       // layers of neurons: current activation values
+    weights: Vec<DMatrix<f64>>,   // in-between weights matrices
+    num_layers: usize,            // number of layers
+    cst_fn: &'a dyn CostFunction, // cost function
 }
 impl<'a> NeuralNetwork<'a> {
     /// Create a NEW Neural Network by passing size of each layer
-    pub fn new(config: NetworkConfig<'a>) -> NeuralNetwork<'a> {
-        let new_num_layers = Vec::len(&config.layers_sizes);
+    pub fn from_config(config: NetworkConfig<'a>) -> Self {
+        let new_num_layers = config.layers_sizes.len();
 
         // Create each layer of zeros with the specified sizes
         let mut new_layers = vec![];
@@ -46,7 +40,7 @@ impl<'a> NeuralNetwork<'a> {
             ));
         }
 
-        return NeuralNetwork {
+        return Self {
             layers: new_layers,
             weights: new_weights,
             num_layers: new_num_layers,
@@ -55,7 +49,11 @@ impl<'a> NeuralNetwork<'a> {
     }
 
     /// Feed with an input to update the layers of the Neural Network
-    pub fn feed_forward(&mut self, input: DVector<f64>) {
+    pub fn feed_forward(&mut self, input: DVector<f64>) -> Result<(), &str> {
+        if input.len() != self.layers[0].get_a().len() {
+            return Err("Input needs to be the same size as input layer");
+        }
+
         self.layers[0].set_a(input);
 
         for i in 1..self.num_layers {
@@ -65,6 +63,7 @@ impl<'a> NeuralNetwork<'a> {
             let new_a = self.layers[i].activation.fun(new_z);
             self.layers[i].set_a(new_a);
         }
+        Ok(())
     }
 
     // Called to get the  partial derivatives
@@ -104,7 +103,7 @@ impl<'a> NeuralNetwork<'a> {
         // iterate for each layer and use the errors to compute the partial derivative of each value
         for l in 1..self.num_layers {
             nabla_b.push(deltas[l].clone()); //  <<< hmmmm... check that
-            nabla_w.push(&deltas[l] * &self.layers[l - 1].a.transpose());
+            nabla_w.push(&deltas[l] * &self.get_layer(l - 1).a.transpose());
         }
 
         return Some(ParametersGradient { nabla_w, nabla_b });
@@ -114,6 +113,31 @@ impl<'a> NeuralNetwork<'a> {
     pub fn get_output(&self) -> &DVector<f64> {
         let ret = self.layers[self.num_layers - 1].get_a();
         ret
+    }
+
+    pub fn set_weight(&mut self, i: usize, new_w: DMatrix<f64>) {
+        self.weights[i] = new_w;
+    }
+
+    pub fn get_weight(&mut self, i: usize) -> &DMatrix<f64> {
+        &self.weights[i]
+    }
+
+    pub fn set_bias(&mut self, i: usize, new_b: DVector<f64>) {
+        self.layers[i].set_b(new_b);
+    }
+
+    pub fn get_bias(&mut self, i: usize) -> &DVector<f64> {
+        self.layers[i].get_b()
+    }
+
+    pub fn get_layer(&mut self, i: usize) -> &Layer {
+        &self.layers[i]
+    }
+
+    /// Size of the Network is the ammount of layers, for weights subtract 1
+    pub fn get_size(&self) -> usize {
+        self.layers.len()
     }
 }
 

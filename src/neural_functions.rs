@@ -23,7 +23,7 @@ pub trait CostFunction {
 // ==================================== ACTIVATION FUNCTIONS ==========================================||
 pub struct Sigmoid {}
 impl Sigmoid {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 }
@@ -61,7 +61,7 @@ impl ActivationFunction for SoftMax {
 // ==================================== COST FUNCTIONS ==========================================||
 pub struct Mse {}
 impl Mse {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 }
@@ -74,7 +74,7 @@ impl CostFunction for Mse {
 
 pub struct CrossEntropy {}
 impl CrossEntropy {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 }

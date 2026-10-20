@@ -15,3 +15,6 @@ pub mod persistence;
 
 // Utilities to train the model
 pub mod training;
+
+// Builder module for Neural Network creation
+pub mod config;
