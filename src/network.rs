@@ -131,7 +131,7 @@ impl<'a> NeuralNetwork<'a> {
         self.layers[i].get_b()
     }
 
-    pub fn get_layer(&mut self, i: usize) -> &Layer {
+    pub fn get_layer(&mut self, i: usize) -> &Layer<'_> {
         &self.layers[i]
     }
 

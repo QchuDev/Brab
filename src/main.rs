@@ -12,7 +12,7 @@ fn main() {
     println!("Start..\n");
 
     let config = NetworkConfig::new()
-        .with_shape(&[784, 8, 8, 10])
+        .with_shape(&[784, 16, 8, 4, 10])
         .with_activation(&SIGMOID)
         .with_cost(&CROSS_ENTROPY)
         .with_sofmax()
@@ -23,7 +23,7 @@ fn main() {
     let provider = MnistProvider::new();
     let train_data = provider.get_data();
 
-    let results = Trainer::train(&mut network, train_data, &SGD::new(0.06f64), 2);
+    let results = Trainer::train(&mut network, train_data, &SGD::new(0.06f64), 10);
     print_results(results.unwrap());
 }
 

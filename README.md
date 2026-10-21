@@ -4,11 +4,14 @@ Small library for creating, using and saving neural network models. Make a small
 ## Get started
 
 ### Basic Types
-- Neural Network
+- NetworkConfig
+- NeuralNetwork
 - CostFunction
 - ActivationFunction
 
 ### Training Data
+Check for some MNIST models run (here)[docs/mnist-results/]
+
 ### Choose cost and activation
 
 ## W.I.P
@@ -16,7 +19,7 @@ Small library for creating, using and saving neural network models. Make a small
 
 Result pattern and testing. With these two feedback and code state upgrades.
 
-- [ ] Testing             
+- [ ] Testing
 - [x] Data provider:
 - [ ] Documentation
 - [x] Softmax function: solution to make it extensible on the API
@@ -26,9 +29,10 @@ Result pattern and testing. With these two feedback and code state upgrades.
 - [ ] Learn & Implement Q-Learning
 
 - [ ] Implement Genetic Algorithm capabilities
+- [ ] Implement 'Breeder'; takes N agents to create N more, from breeding between them and mutations.
 
 - [x] Segregate responsabilities from NeuralNetwork
-- [ ] Builder pattern for a reactive way of creating a NeuralNetwork
+- [x] Ractive way of creating a NeuralNetwork
 
 - [x] Formatter
 - [ ] Results extraction and plotting
@@ -48,5 +52,7 @@ Train it by givin the expected value and learning rate, it will correct itself.
 
 Hand in a dataset to make the automatic training.
 
-### Save & Load    [x]
+### Save & Load    [ ] - Broken for now
 Save into safetensor type file and create a new network from that saved data.
+
+
