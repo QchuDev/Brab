@@ -1,7 +1,7 @@
 use brab::{
     config::NetworkConfig,
-    consts::{CROSS_ENTROPY, SIGMOID},
     network::NeuralNetwork,
+    neural_functions::FunctionsRegistry,
     training::{EpochResult, SGD, Trainer},
 };
 use nalgebra::DVector;
@@ -11,11 +11,18 @@ include!("mnist_data.rs");
 fn main() {
     println!("Start..\n");
 
+    let registry = FunctionsRegistry::default();
+    let sigmoid = registry.get_activation("sigmoid").unwrap();
+    let cross_entropy = registry.get_cost("cross entropy").unwrap();
+
+    // if you want to load any other function...
+    // registry.add_activation(...) or registry.add_cost(...);
+
     let config = NetworkConfig::new()
         .with_shape(&[784, 16, 8, 4, 10])
-        .with_activation(&SIGMOID)
-        .with_cost(&CROSS_ENTROPY)
-        .with_sofmax()
+        .with_activation(sigmoid)
+        .with_cost(cross_entropy)
+        .with_sofmax() // last layer uses softmax
         .build();
 
     let mut network = NeuralNetwork::from_config(config);
