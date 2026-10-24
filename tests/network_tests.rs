@@ -17,12 +17,18 @@ impl ActivationFunction for DummyActivation {
     fn prime(&self, x: DVector<f64>) -> DVector<f64> {
         x.clone()
     }
+    fn name(&self) -> String {
+        "dummy".to_string()
+    }
 }
 
 struct DummyCost {}
 impl CostFunction for DummyCost {
     fn delta(&self, context: NeuralFunctionContext) -> DVector<f64> {
         DVector::zeros(context.a.len())
+    }
+    fn name(&self) -> String {
+        "dummy".to_string()
     }
 }
 
