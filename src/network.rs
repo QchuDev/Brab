@@ -139,6 +139,10 @@ impl<'a> NeuralNetwork<'a> {
     pub fn get_size(&self) -> usize {
         self.layers.len()
     }
+
+    pub fn get_cost_function(&self) -> &dyn CostFunction {
+        self.cst_fn
+    }
 }
 
 /*
@@ -182,6 +186,10 @@ impl<'a> Layer<'a> {
     }
     pub fn set_b(&mut self, new_b: DVector<f64>) {
         self.b = new_b
+    }
+
+    pub fn get_activation(&self) -> &dyn ActivationFunction {
+        self.activation
     }
 }
 
