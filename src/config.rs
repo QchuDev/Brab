@@ -12,7 +12,7 @@ use crate::{
 */
 
 pub struct NetworkConfig<'a> {
-    pub layers_sizes: &'a [usize],
+    pub layers_sizes: Vec<usize>,
     pub new_act_fn: &'a dyn ActivationFunction,
     pub new_cst_fn: &'a dyn CostFunction,
     pub has_softmax: bool,
@@ -20,15 +20,15 @@ pub struct NetworkConfig<'a> {
 impl<'a> NetworkConfig<'a> {
     pub fn new() -> Self {
         NetworkConfig {
-            layers_sizes: &[4, 3, 2],
+            layers_sizes: vec![4, 3, 2],
             new_act_fn: &SIGMOID,
             new_cst_fn: &CROSS_ENTROPY,
             has_softmax: true,
         }
     }
 
-    pub fn with_shape(mut self, shape: &'a [usize]) -> Self {
-        self.layers_sizes = shape;
+    pub fn with_shape(mut self, shape: &[usize]) -> Self {
+        self.layers_sizes = shape.to_vec();
         self
     }
 

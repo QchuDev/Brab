@@ -48,12 +48,11 @@ fn test_layers() {
 
 #[test]
 fn test_network_feed() {
-    let config = NetworkConfig {
-        layers_sizes: &vec![3, 4, 4],
-        new_act_fn: &DummyActivation {},
-        new_cst_fn: &DummyCost {},
-        has_softmax: true,
-    };
+    let config = NetworkConfig::new()
+        .with_shape(&[3, 4, 4])
+        .with_activation(&DummyActivation {})
+        .with_cost(&DummyCost {})
+        .with_sofmax();
 
     let mut net = NeuralNetwork::from_config(config);
     let input = DVector::from(vec![1.0, 1.0, 1.0]);

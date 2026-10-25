@@ -1,14 +1,14 @@
-use std::error::Error;
+use core::num;
+use std::{error::Error, vec};
 
 use nalgebra::{DMatrix, DVector};
-use safetensors::{Dtype, SafeTensorError, SafeTensors, serialize_to_file, tensor::TensorView};
+use safetensors::{Dtype, SafeTensors, serialize_to_file, tensor::TensorView};
 use tuple_conv::TupleOrVec;
 
 use crate::{
     config::NetworkConfig,
-    consts::SOFTMAX,
-    network::{Layer, NeuralNetwork},
-    neural_functions::{ActivationFunction, CostFunction},
+    network::{self, NeuralNetwork},
+    neural_functions::FunctionsRegistry,
 };
 
 // TODO: Rework the persistence, save more stuff to load better
@@ -47,13 +47,25 @@ impl NetworkPersistence {
 
         for l in 0..network.get_size() {
             let view = TensorView::new(Dtype::F64, vec![b_sizes[l]], &b_buffers[l])?;
-            file_data.push((format!("biases_{}", l), view));
+            file_data.push((format!("biases_{l}"), view));
         }
 
         for l in 0..network.get_size() - 1 {
             let view = TensorView::new(Dtype::F64, w_shapes[l].clone(), &w_buffers[l])?;
-            file_data.push((format!("weights_{}", l), view));
+            file_data.push((format!("weights_{l}"), view));
         }
+
+        let activation_names: Vec<Vec<u8>> = (0..network.get_size())
+            .map(|l| network.get_layer(l).get_activation().name().into_bytes())
+            .collect();
+        for (l, buf) in activation_names.iter().enumerate() {
+            let view = TensorView::new(Dtype::U8, vec![buf.len()], buf)?;
+            file_data.push((format!("activation_{l}"), view));
+        }
+
+        let cost_name = network.get_cost_function().name().into_bytes();
+        let view = TensorView::new(Dtype::U8, vec![cost_name.len()], &cost_name)?;
+        file_data.push(("cost".to_string(), view));
 
         // 3) Serialize everything in one go.
         serialize_to_file(file_data, None, std::path::Path::new(file_path))?;
@@ -63,10 +75,8 @@ impl NetworkPersistence {
 
     pub fn load<'a>(
         file_path: &str,
-        act_fn: &'a dyn ActivationFunction,
-        cst_fn: &'a dyn CostFunction,
-        has_softmax: bool,
-    ) -> Result<NeuralNetwork<'a>, SafeTensorError> {
+        functions_registry: &'a FunctionsRegistry,
+    ) -> Result<NeuralNetwork<'a>, Box<dyn std::error::Error>> {
         let file = std::fs::read(file_path)?;
         let tensors = SafeTensors::deserialize(&file)?;
 
@@ -75,27 +85,32 @@ impl NetworkPersistence {
             .iter()
             .filter(|n| n.starts_with("biases_"))
             .count();
+        let mut network_shape: Vec<usize> = vec![];
 
-        let mut new_layers: Vec<Layer> = Vec::with_capacity(num_layers);
+        if num_layers == 0 {
+            return Err("file doesnt contain layers".into());
+        }
+
+        let mut biases: Vec<DVector<f64>> = Vec::with_capacity(num_layers);
         let mut new_weights: Vec<DMatrix<f64>> = Vec::with_capacity(num_layers - 1);
 
+        // All functions registered
+        let cost_bytes: &[u8] = tensors.tensor("cost")?.data();
+        let cost_name: String = String::from_utf8(cost_bytes.to_vec()).unwrap();
+
+        let mut activation_names: Vec<String> = Vec::new();
+        let mut l = 0;
+        while let Ok(t) = tensors.tensor(&format!("activation_{l}")) {
+            activation_names.push(String::from_utf8(t.data().to_vec()).unwrap());
+            l += 1;
+        }
         // We know its indexed like 'name_{i}' so we use it to bring the values
         // Extracting biases
         for l in 0..num_layers {
             let bias_view = tensors.tensor(&format!("biases_{}", l))?;
-            let (bias_data, _shape) = tensor_to_f64(&bias_view);
-
-            let b = DVector::from_vec(bias_data);
-            let size = b.nrows();
-
-            let mut nl = Layer::new(size, act_fn);
-            // last layer adding softmax
-            if has_softmax && l == num_layers - 1 {
-                nl = Layer::new(size, &SOFTMAX);
-            }
-
-            // setting bias into layer
-            new_layers.push(nl);
+            let (b_data, shape) = tensor_to_f64(&bias_view);
+            biases.push(DVector::from_vec(b_data));
+            network_shape.push(shape[0]);
         }
 
         // Extracting weights
@@ -113,13 +128,13 @@ impl NetworkPersistence {
 
         // we create the default network for now
         let config = NetworkConfig::new()
-            .with_activation(act_fn)
-            .with_cost(cst_fn)
+            .with_shape(&network_shape)
+            .with_cost(functions_registry.get_cost(cost_name.as_str()).unwrap())
             .build();
 
         let mut net = NeuralNetwork::from_config(config);
         for i in 0..num_layers {
-            net.set_bias(i, new_layers[i].get_b().clone());
+            net.set_bias(i, biases[i].clone());
             if i < num_layers - 1 {
                 net.set_weight(i, new_weights[i].clone());
             }
