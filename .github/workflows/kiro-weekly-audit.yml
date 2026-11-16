@@ -1,0 +1,63 @@
+name: Kiro Weekly Rust Audit
+
+on:
+  schedule:
+    # Se ejecuta todos los lunes a las 10:00 UTC (07:00 ART)
+    - cron: '0 10 * * 1'
+  workflow_dispatch: # Permite ejecutarlo manualmente desde la pestaña Actions para probar
+
+permissions:
+  contents: read
+  issues: write # Necesario para que el agente pueda crear issues
+
+env:
+  # Debe coincidir con rust-version en Cargo.toml
+  MSRV: "1.89"
+
+jobs:
+  rust-code-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Verificar secret KIRO_API_KEY
+        env:
+          KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+        run: |
+          if [ -z "$KIRO_API_KEY" ]; then
+            echo "::error::Falta el secret KIRO_API_KEY"
+            exit 1
+          fi
+
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Instalar toolchain MSRV
+        run: rustup toolchain install "$MSRV" --profile minimal
+
+      - name: Cache de Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Instalar herramientas de auditoría (cargo-audit y cargo-outdated)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-outdated
+
+      - name: Instalar Kiro CLI
+        run: |
+          curl -fsSL https://cli.kiro.dev/install | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Ejecutar Agente Auditor de Kiro
+        env:
+          KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          kiro-cli chat --no-interactive \
+            --agent rust-auditor \
+            --trust-tools=read,grep,glob,shell \
+            "Audita el repositorio siguiendo el steering weekly-rust-audit.md. Ejecuta: 1) cargo fmt --check, cargo clippy y cargo test en stable, 2) cargo +$MSRV check para validar la MSRV, 3) cargo audit y cargo outdated. Revisa issues abiertos con 'gh issue list' antes de abrir nuevos con 'gh issue create'."

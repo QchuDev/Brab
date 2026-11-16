@@ -3,14 +3,6 @@ use crate::{
     neural_functions::{ActivationFunction, CostFunction},
 };
 
-/*
-    TODO: Refactor the way of creating a NeuralNetwork:
-    - NeuralNetowork will start default
-    - No config is provided
-    - by calling chained methods (reactive) it will set itself
-    - Method for each config field
-*/
-
 pub struct NetworkConfig<'a> {
     pub layers_sizes: Vec<usize>,
     pub new_act_fn: &'a dyn ActivationFunction,

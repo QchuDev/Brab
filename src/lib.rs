@@ -1,7 +1,7 @@
 // All constants and defaults in use
 pub mod consts;
 
-// Training Data layer for the API
+// Training Data module for the API
 pub mod data;
 
 // Structure and basic Neural Network

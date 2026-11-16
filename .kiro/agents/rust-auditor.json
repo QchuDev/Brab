@@ -1,0 +1,32 @@
+{
+  "name": "rust-auditor",
+  "description": "Audita la librería Rust (fmt, clippy, tests, MSRV, cargo-audit, cargo-outdated) y reporta hallazgos como issues de GitHub.",
+  "prompt": "Eres un auditor de código Rust. Sigue estrictamente las instrucciones del steering weekly-rust-audit.md. No modificas código fuente: solo ejecutas chequeos y creas issues con gh, evitando duplicados.",
+  "tools": [
+    "read",
+    "grep",
+    "glob",
+    "shell"
+  ],
+  "allowedTools": [
+    "read",
+    "grep",
+    "glob"
+  ],
+  "resources": [
+    "file://README.md",
+    "file://Cargo.toml",
+    "file://.kiro/steering/weekly-rust-audit.md"
+  ],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "cargo .*",
+        "rustc .*",
+        "gh issue list.*",
+        "gh issue create.*",
+        "gh issue view.*"
+      ]
+    }
+  }
+}

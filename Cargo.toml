@@ -2,6 +2,12 @@
 name = "brab"
 version = "0.1.0"
 edition = "2024"
+# MSRV: la define nalgebra 0.35 (1.89). Mantener sincronizada con el workflow de auditoría.
+rust-version = "1.89"
+description = "Red neuronal simple en Rust con soporte para MNIST"
+readme = "README.md"
+repository = "https://github.com/QchuDev/RustNN-"
+license = "MIT"
 
 [dependencies]
 mnist_reader = "0.1.1"
