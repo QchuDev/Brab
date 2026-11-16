@@ -59,5 +59,5 @@ jobs:
         run: |
           kiro-cli chat --no-interactive \
             --agent rust-auditor \
-            --trust-tools=read,grep,glob,shell \
+            --trust-all-tools \
             "Audita el repositorio siguiendo el steering weekly-rust-audit.md. Ejecuta: 1) cargo fmt --check, cargo clippy y cargo test en stable, 2) cargo +$MSRV check para validar la MSRV, 3) cargo audit y cargo outdated. Revisa issues abiertos con 'gh issue list' antes de abrir nuevos con 'gh issue create'."

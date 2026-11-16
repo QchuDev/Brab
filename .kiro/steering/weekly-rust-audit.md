@@ -17,10 +17,11 @@ Objetivo: detectar problemas de calidad, compatibilidad y seguridad, y reportarl
 
 ## Reglas
 
+- Ejecuta cada comando solo, sin pipes (`|`), `;`, `&&`, redirecciones ni `echo`. Si la salida es larga, léela completa y resúmela tú. El shell solo auto-aprueba comandos simples.
 - No modifiques código ni hagas commits. Solo lees, ejecutas chequeos y creas issues.
 - Antes de crear un issue, ejecuta `gh issue list --state open --limit 100` y no abras uno si ya existe uno equivalente.
 - Un issue por problema (agrupa los warnings de un mismo tipo). Título con prefijo `[audit]`.
 - Cada issue incluye: comando ejecutado, salida relevante, archivo y línea si aplica, y una sugerencia de arreglo.
-- Usa `gh issue create --title ... --body ...` con la etiqueta `audit` si existe.
+- Usa `gh issue create --title ... --body ...` con la etiqueta `kiro-audit` si existe.
 - Si todo pasa, no crees nada y termina con un resumen de una línea por chequeo.
 - Termina siempre con un resumen: chequeos ejecutados, resultado y URLs de issues creados.
