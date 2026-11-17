@@ -9,6 +9,7 @@ use rand::random;
 /*
     On this NeuralNetwork we distinguish the hidden layers from the input and output ones
 */
+#[derive(Clone)]
 pub struct NeuralNetwork<'a> {
     layers: Vec<Layer<'a>>,       // layers of neurons: current activation values
     weights: Vec<DMatrix<f64>>,   // in-between weights matrices
@@ -148,6 +149,7 @@ impl<'a> NeuralNetwork<'a> {
 /*
     Layer struct contains a, z and b column vectors. Also a reference to the activation function in use
 */
+#[derive(Clone)]
 pub struct Layer<'a> {
     z: DVector<f64>, // weigthed inputs    z = b * a + b
     a: DVector<f64>, // activations : a = s(z)
