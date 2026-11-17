@@ -57,13 +57,13 @@ pub struct NeuralFunctionContext<'a> {
     pub activ_fn: &'a dyn ActivationFunction,
 }
 
-pub trait ActivationFunction {
+pub trait ActivationFunction: Send + Sync {
     fn fun(&self, x: DVector<f64>) -> DVector<f64>;
     fn prime(&self, x: DVector<f64>) -> DVector<f64>;
     fn name(&self) -> String;
 }
 
-pub trait CostFunction {
+pub trait CostFunction: Send + Sync {
     /// Search it up, its used for the backpropagation algorithm
     fn delta(&self, context: NeuralFunctionContext) -> DVector<f64>;
     fn name(&self) -> String;
